@@ -1,0 +1,1471 @@
+openapi: 3.1.0
+info:
+  title: Brainz API
+  version: 1.0.0
+  description: |-
+    REST API für Brainz — Personal Knowledge Management, Produktivität und KI-gestütztes Content-System.
+
+    Alle authentifizierten Endpunkte erfordern ein `Bearer <jwt>` Token im `Authorization` Header.
+
+    Die vollständige interaktive Dokumentation aller 533 Endpunkte ist unter `/api/docs` verfügbar.
+  contact:
+    name: Brainz API Support
+    url: https://brainz.app
+    email: support@brainz.app
+  license:
+    name: Proprietary
+    url: https://brainz.app/terms
+servers:
+  - url: https://api.brainz.app
+    description: Brainz API Server
+  - url: http://localhost:3000
+    description: Lokale Entwicklung
+tags:
+  - name: Auth
+    description: Authentifizierung und Session-Verwaltung
+  - name: Drop
+    description: Universal-Ingestion für alle Content-Typen
+  - name: Search
+    description: Hybrid-Suche mit Full-Text, Vektor und Fuzzy
+  - name: Assets
+    description: Asset-Verwaltung und Metadaten
+  - name: Insights
+    description: KI-gestützte Erkenntnisse und Analysen
+  - name: Predictive
+    description: Prädiktive Vorschläge und Zero-State
+  - name: Collections
+    description: Smart Collections mit regelbasierten Filtern
+  - name: Files
+    description: Dateiverwaltung und Upload
+  - name: AI Assistant
+    description: KI-Assistenz und Chat
+  - name: System
+    description: Health, Content-Types und Systeminformationen
+paths:
+  /api/auth/sign-in:
+    post:
+      tags:
+        - Auth
+      summary: Anmelden
+      description: Authentifiziert einen Benutzer mit E-Mail und Passwort und gibt ein JWT sowie grundlegende Benutzerinformationen zurück.
+      operationId: signInUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+            example:
+              email: user@brainz.app
+              password: secret-password
+      responses:
+        '200':
+          description: Erfolgreich angemeldet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignInResponse'
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example
+                user:
+                  id: 42
+                  email: user@brainz.app
+                  display_name: Max Mustermann
+        '401':
+          description: Ungültige Zugangsdaten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Ungültige E-Mail oder Passwort
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Aktueller Benutzer
+      description: Liefert das Profil des aktuell authentifizierten Benutzers.
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Benutzerprofil erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+              example:
+                id: 42
+                email: user@brainz.app
+                display_name: Max Mustermann
+                role: admin
+                tenant_id: 7
+                created_at: '2025-01-15T10:30:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/drop:
+    post:
+      tags:
+        - Drop
+      summary: Content via Drop erfassen
+      description: Universal-Ingestion-Endpoint. Akzeptiert URLs, Text, Dateien und strukturierte Daten. Erkennt Content-Typ automatisch.
+      operationId: createDropContent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DropRequest'
+            example:
+              content: https://brainz.app/blog/knowledge-management
+              title: Interessanter Artikel
+              content_type: url
+              tags:
+                - produktivität
+                - wissen
+              emit_card: true
+      responses:
+        '200':
+          description: Content erfolgreich erfasst
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DropResponse'
+              example:
+                id: 101
+                uuid: 550e8400-e29b-41d4-a716-446655440000
+                kind: item
+                content_type: url
+                title: Interessanter Artikel
+                status: processed
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/search/unified:
+    post:
+      tags:
+        - Search
+      summary: Unified Hybrid Search
+      description: Kombiniert Full-Text, semantische Vektorsuche, Fuzzy-Matching, Recency und Geo-Signale.
+      operationId: unifiedSearch
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnifiedSearchRequest'
+            example:
+              query: knowledge graph
+              mode: hybrid
+              limit: 20
+              source_types:
+                - item
+                - document
+              tags:
+                - research
+              fuzzy: true
+      responses:
+        '200':
+          description: Suchergebnisse erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnifiedSearchResponse'
+              example:
+                results:
+                  - id: 1
+                    title: Knowledge Graph Basics
+                    source_type: document
+                    content_type: article
+                    description: Einführung in semantische Wissensgraphen.
+                    tags:
+                      - research
+                      - ai
+                    fts_score: 0.91
+                    vector_score: 0.88
+                    final_score: 0.9
+                    created_at: '2025-02-01T08:00:00Z'
+                total_count: 1
+                facets:
+                  source_type:
+                    document: 1
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/predictive/next:
+    get:
+      tags:
+        - Predictive
+      summary: Prädiktive Vorschläge
+      description: Liefert vorhergesagte relevante Inhalte basierend auf Nutzerverhalten und Kontext.
+      operationId: getPredictiveNext
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: context
+          in: query
+          required: false
+          description: Optionaler Kontext für die Vorhersage, z. B. aktuelle Aufgabe oder Situation.
+          schema:
+            type: string
+          example: morning-review
+        - name: limit
+          in: query
+          required: false
+          description: Maximale Anzahl der Vorschläge.
+          schema:
+            type: integer
+            default: 8
+            maximum: 30
+            minimum: 1
+          example: 8
+        - name: type
+          in: query
+          required: false
+          description: Optionaler Filter für einen bestimmten Typ.
+          schema:
+            type: string
+          example: document
+        - name: min_score
+          in: query
+          required: false
+          description: Mindestscore zwischen 0 und 1.
+          schema:
+            type: number
+            default: 0.25
+            minimum: 0
+            maximum: 1
+          example: 0.25
+      responses:
+        '200':
+          description: Prädiktive Vorschläge erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictiveNextResponse'
+              example:
+                predictions:
+                  - id: 12
+                    title: Weekly Planning Notes
+                    source_type: item
+                    content_type: note
+                    score: 0.87
+                    reason: Kürzlich häufig genutzt und thematisch passend
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/insights:
+    get:
+      tags:
+        - Insights
+      summary: Aktive Insights abrufen
+      description: Liefert KI-generierte Erkenntnisse und Handlungsempfehlungen für den aktuellen Benutzer.
+      operationId: listInsights
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: diverse
+          in: query
+          required: false
+          description: Diversifizierte Auswahl über Kategorien.
+          schema:
+            type: boolean
+            default: false
+          example: true
+      responses:
+        '200':
+          description: Insights erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsResponse'
+              example:
+                insights:
+                  - id: insight-123
+                    type: trend
+                    title: Wiederkehrendes Thema erkannt
+                    description: Mehrere neue Inhalte drehen sich um Wissensgraphen.
+                    priority: high
+                    entities:
+                      - type: document
+                        id: 5
+                    actions:
+                      - label: Collection erstellen
+                        action: create_collection
+                    created_at: '2025-02-10T09:15:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/insights/deep-analysis:
+    post:
+      tags:
+        - Insights
+      summary: Deep Analysis starten
+      description: Führt umfassende KI-Analyse einer Entität durch.
+      operationId: createDeepAnalysis
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeepAnalysisRequest'
+            example:
+              entity_type: document
+              entity_id: 5
+      responses:
+        '200':
+          description: Analyse erfolgreich abgeschlossen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeepAnalysisResponse'
+              example:
+                analysis:
+                  summary: Das Dokument behandelt zentrale Konzepte moderner Wissensrepräsentation.
+                  key_topics:
+                    - knowledge graph
+                    - ontology
+                  suggested_tags:
+                    - ai
+                    - research
+                  connections:
+                    - entity_type: item
+                      entity_id: 12
+                      reason: Thematische Überschneidung
+                  quality_score: 0.93
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/collections:
+    get:
+      tags:
+        - Collections
+      summary: Collections auflisten
+      description: Listet alle Collections des aktuellen Benutzers oder Tenants mit Regeln und Metadaten auf.
+      operationId: listCollections
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Collections erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectionsListResponse'
+              example:
+                collections:
+                  - id: 1
+                    title: KI Forschung
+                    description: Inhalte rund um AI und Wissensmanagement
+                    rules:
+                      tags:
+                        includes:
+                          - ai
+                    item_count: 24
+                    created_at: '2025-02-01T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Collections
+      summary: Collection erstellen
+      description: Erstellt eine neue Collection mit optionalen regelbasierten Filtern im JSON-Format.
+      operationId: createCollection
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCollectionRequest'
+            example:
+              title: Fokus heute
+              description: Wichtige Inhalte für den heutigen Tag
+              rules:
+                priority:
+                  gte: 0.8
+      responses:
+        '201':
+          description: Collection erfolgreich erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collection'
+              example:
+                id: 2
+                title: Fokus heute
+                description: Wichtige Inhalte für den heutigen Tag
+                rules:
+                  priority:
+                    gte: 0.8
+                created_at: '2025-02-12T11:45:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/files:
+    post:
+      tags:
+        - Files
+      summary: Datei hochladen
+      description: Multipart-Upload einer Datei mit automatischer Typ-Erkennung und Metadaten-Extraktion.
+      operationId: uploadFile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FileUploadRequest'
+            encoding:
+              file:
+                contentType: application/octet-stream
+      responses:
+        '200':
+          description: Datei erfolgreich hochgeladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+              example:
+                id: 77
+                uuid: 550e8400-e29b-41d4-a716-446655440001
+                filename: notes.pdf
+                mime_type: application/pdf
+                size_bytes: 245760
+                storage_key: uploads/2025/02/notes.pdf
+                created_at: '2025-02-12T12:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '413':
+          description: Datei zu groß
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Datei überschreitet die maximal erlaubte Größe
+        '422':
+          $ref: '#/components/responses/UnprocessableEntityError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/ai/chat:
+    post:
+      tags:
+        - AI Assistant
+      summary: AI Chat (SSE Streaming)
+      description: Chattet mit dem KI-Assistenten. Antwort kommt als Server-Sent Events Stream.
+      operationId: streamAiChat
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiChatRequest'
+            example:
+              message: Fasse meine letzten Notizen zusammen
+              conversation_id: 550e8400-e29b-41d4-a716-446655440002
+              context:
+                scope: recent_notes
+      responses:
+        '200':
+          description: SSE Stream mit AI-Antwort
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |-
+                  event: message
+                  data: {"token":"Hallo"}
+
+                  event: done
+                  data: {"conversation_id":"550e8400-e29b-41d4-a716-446655440002"}
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health Check
+      description: Systemstatus prüfen. Kein Token erforderlich.
+      operationId: getHealthStatus
+      security: []
+      responses:
+        '200':
+          description: System ist erreichbar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                version: 1.0.0
+                uptime: 12345.67
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/content-types:
+    get:
+      tags:
+        - System
+      summary: Verfügbare Content-Typen
+      description: Liefert alle registrierten Content-Typen mit Zählwerten.
+      operationId: listContentTypes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Content-Typen erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContentTypeInfo'
+              example:
+                - type: document
+                  count: 42
+                  label: Dokumente
+                  icon: file-text
+                  color: blue
+                - type: item
+                  count: 128
+                  label: Items
+                  icon: box
+                  color: green
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/events/observe:
+    get:
+      tags:
+        - System
+      summary: Event-Stream (NDJSON)
+      description: Lang laufender NDJSON-Stream für Echtzeit-Events. Basis für Content Stream und Live-Updates.
+      operationId: observeEvents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Kontinuierlicher Event-Stream
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                example: |-
+                  {"type":"content.created","id":101,"timestamp":"2025-02-12T12:30:00Z"}
+                  {"type":"insight.created","id":"insight-123","timestamp":"2025-02-12T12:31:00Z"}
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/assets/predictive-next:
+    post:
+      tags:
+        - Assets
+      summary: Asset-basierte Vorschläge (Legacy)
+      description: Älterer Endpoint für prädiktive Asset-Vorschläge. Bevorzuge GET /api/predictive/next.
+      operationId: createLegacyAssetPredictiveNext
+      deprecated: true
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyAssetPredictiveRequest'
+            example:
+              context: dashboard
+              limit: 8
+      responses:
+        '200':
+          description: Legacy-Vorschläge erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyAssetPredictiveResponse'
+              example:
+                suggestions:
+                  - id: 9
+                    title: Projektplan Q1
+                    score: 0.79
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Standardisiertes Fehlerobjekt.
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Fehlerbeschreibung.
+          example: Ungültige Anfrage
+      example:
+        error: Ungültige Anfrage
+    UserSummary:
+      type: object
+      description: Kompakte Benutzerinformationen.
+      required:
+        - id
+        - email
+        - display_name
+      properties:
+        id:
+          type: integer
+          description: Eindeutige Benutzer-ID.
+          example: 42
+        email:
+          type: string
+          format: email
+          description: E-Mail-Adresse des Benutzers.
+          example: user@brainz.app
+        display_name:
+          type: string
+          description: Anzeigename des Benutzers.
+          example: Max Mustermann
+    CurrentUser:
+      type: object
+      description: Vollständiges Profil des aktuell angemeldeten Benutzers.
+      required:
+        - id
+        - email
+        - display_name
+        - role
+        - tenant_id
+        - created_at
+      properties:
+        id:
+          type: integer
+          description: Eindeutige Benutzer-ID.
+          example: 42
+        email:
+          type: string
+          format: email
+          description: E-Mail-Adresse des Benutzers.
+          example: user@brainz.app
+        display_name:
+          type: string
+          description: Anzeigename des Benutzers.
+          example: Max Mustermann
+        role:
+          type: string
+          description: Rolle des Benutzers im System.
+          example: admin
+        tenant_id:
+          type: integer
+          description: ID des zugehörigen Tenants.
+          example: 7
+        created_at:
+          type: string
+          format: date-time
+          description: Erstellungszeitpunkt des Benutzers.
+          example: '2025-01-15T10:30:00Z'
+    SignInRequest:
+      type: object
+      description: Anfrage zum Anmelden mit E-Mail und Passwort.
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: E-Mail-Adresse des Benutzers.
+          example: user@brainz.app
+        password:
+          type: string
+          minLength: 1
+          description: Klartext-Passwort des Benutzers.
+          example: secret-password
+    SignInResponse:
+      type: object
+      description: Erfolgreiche Antwort nach dem Login.
+      required:
+        - token
+        - user
+      properties:
+        token:
+          type: string
+          description: JWT für nachfolgende authentifizierte Requests.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example
+        user:
+          $ref: '#/components/schemas/UserSummary'
+    DropRequest:
+      type: object
+      description: Anfrage zum Erfassen von Content über den Drop-Endpoint.
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: URL, Text oder Base64-Daten.
+          example: https://brainz.app/blog/knowledge-management
+        title:
+          type: string
+          description: Optionaler Titel für den Inhalt.
+          example: Interessanter Artikel
+        content_type:
+          type: string
+          description: Expliziter Content-Typ, sonst Auto-Erkennung.
+          example: url
+        tags:
+          type: array
+          description: Optionale Tags für den Inhalt.
+          items:
+            type: string
+          example:
+            - produktivität
+            - wissen
+        emit_card:
+          type: boolean
+          description: Stream-Karte erzeugen.
+          default: true
+          example: true
+    DropResponse:
+      type: object
+      description: Ergebnis einer erfolgreichen Drop-Erfassung.
+      required:
+        - id
+        - uuid
+        - kind
+        - content_type
+        - title
+        - status
+      properties:
+        id:
+          type: integer
+          description: Interne ID des erzeugten Eintrags.
+          example: 101
+        uuid:
+          type: string
+          format: uuid
+          description: UUID des erzeugten Eintrags.
+          example: 550e8400-e29b-41d4-a716-446655440000
+        kind:
+          type: string
+          description: Grober Typ des erzeugten Inhalts.
+          enum:
+            - item
+            - document
+            - file
+          example: item
+        content_type:
+          type: string
+          description: Erkannter oder gesetzter Content-Typ.
+          example: url
+        title:
+          type: string
+          description: Titel des Inhalts.
+          example: Interessanter Artikel
+        status:
+          type: string
+          description: Verarbeitungsstatus des Inhalts.
+          example: processed
+    UnifiedSearchRequest:
+      type: object
+      description: Anfrage für die kombinierte hybride Suche.
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Suchanfrage des Benutzers.
+          example: knowledge graph
+        mode:
+          type: string
+          description: Suchmodus.
+          enum:
+            - hybrid
+            - semantic
+            - text
+            - nearby
+          default: hybrid
+          example: hybrid
+        limit:
+          type: integer
+          description: Maximale Anzahl an Treffern.
+          default: 20
+          maximum: 100
+          minimum: 1
+          example: 20
+        source_types:
+          type: array
+          description: Optionale Quelltypen für die Suche.
+          items:
+            type: string
+            enum:
+              - item
+              - document
+              - file
+          example:
+            - item
+            - document
+        tags:
+          type: array
+          description: Optionale Tags zur Eingrenzung der Suche.
+          items:
+            type: string
+          example:
+            - research
+        fuzzy:
+          type: boolean
+          description: Aktiviert Fuzzy-Matching.
+          default: true
+          example: true
+    SearchResult:
+      type: object
+      description: Einzelnes Ergebnis der Unified Search.
+      required:
+        - id
+        - title
+        - source_type
+        - content_type
+        - description
+        - tags
+        - fts_score
+        - vector_score
+        - final_score
+        - created_at
+      properties:
+        id:
+          type: integer
+          description: Interne ID des Ergebnisses.
+          example: 1
+        title:
+          type: string
+          description: Titel des Suchergebnisses.
+          example: Knowledge Graph Basics
+        source_type:
+          type: string
+          description: Quelltyp des Ergebnisses.
+          example: document
+        content_type:
+          type: string
+          description: Inhaltstyp des Ergebnisses.
+          example: article
+        description:
+          type: string
+          description: Kurzbeschreibung des Ergebnisses.
+          example: Einführung in semantische Wissensgraphen.
+        tags:
+          type: array
+          description: Zugeordnete Tags.
+          items:
+            type: string
+          example:
+            - research
+            - ai
+        fts_score:
+          type: number
+          description: Full-Text-Score.
+          example: 0.91
+        vector_score:
+          type: number
+          description: Vektor-Ähnlichkeitsscore.
+          example: 0.88
+        final_score:
+          type: number
+          description: Finaler kombinierter Ranking-Score.
+          example: 0.9
+        created_at:
+          type: string
+          format: date-time
+          description: Erstellungszeitpunkt des Ergebnisses.
+          example: '2025-02-01T08:00:00Z'
+    UnifiedSearchResponse:
+      type: object
+      description: Antwortobjekt der Unified Search.
+      required:
+        - results
+        - total_count
+        - facets
+      properties:
+        results:
+          type: array
+          description: Liste der Suchtreffer.
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        total_count:
+          type: integer
+          description: Gesamtanzahl aller Treffer.
+          example: 1
+        facets:
+          type: object
+          description: Aggregierte Facetteninformationen.
+          additionalProperties: true
+          example:
+            source_type:
+              document: 1
+    Prediction:
+      type: object
+      description: Einzelner prädiktiver Vorschlag.
+      required:
+        - id
+        - title
+        - source_type
+        - content_type
+        - score
+        - reason
+      properties:
+        id:
+          type: integer
+          description: ID des vorgeschlagenen Inhalts.
+          example: 12
+        title:
+          type: string
+          description: Titel des vorgeschlagenen Inhalts.
+          example: Weekly Planning Notes
+        source_type:
+          type: string
+          description: Quelltyp des vorgeschlagenen Inhalts.
+          example: item
+        content_type:
+          type: string
+          description: Inhaltstyp des vorgeschlagenen Inhalts.
+          example: note
+        score:
+          type: number
+          description: Relevanzscore des Vorschlags.
+          example: 0.87
+        reason:
+          type: string
+          description: Begründung für den Vorschlag.
+          example: Kürzlich häufig genutzt und thematisch passend
+    PredictiveNextResponse:
+      type: object
+      description: Antwort mit prädiktiven Vorschlägen.
+      required:
+        - predictions
+      properties:
+        predictions:
+          type: array
+          description: Liste prädiktiver Vorschläge.
+          items:
+            $ref: '#/components/schemas/Prediction'
+    InsightEntity:
+      type: object
+      description: Referenzierte Entität innerhalb eines Insights.
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          description: Typ der referenzierten Entität.
+          example: document
+        id:
+          type: integer
+          description: ID der referenzierten Entität.
+          example: 5
+    InsightAction:
+      type: object
+      description: Handlungsempfehlung innerhalb eines Insights.
+      required:
+        - label
+        - action
+      properties:
+        label:
+          type: string
+          description: Sichtbares Label der Aktion.
+          example: Collection erstellen
+        action:
+          type: string
+          description: Maschinenlesbarer Aktionsname.
+          example: create_collection
+    Insight:
+      type: object
+      description: KI-generiertes Insight mit Priorität und Aktionen.
+      required:
+        - id
+        - type
+        - title
+        - description
+        - priority
+        - entities
+        - actions
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Eindeutige Insight-ID.
+          example: insight-123
+        type:
+          type: string
+          description: Kategorie oder Typ des Insights.
+          example: trend
+        title:
+          type: string
+          description: Titel des Insights.
+          example: Wiederkehrendes Thema erkannt
+        description:
+          type: string
+          description: Ausführliche Beschreibung des Insights.
+          example: Mehrere neue Inhalte drehen sich um Wissensgraphen.
+        priority:
+          type: string
+          description: Priorität des Insights.
+          enum:
+            - low
+            - medium
+            - high
+          example: high
+        entities:
+          type: array
+          description: Referenzierte Entitäten.
+          items:
+            $ref: '#/components/schemas/InsightEntity'
+        actions:
+          type: array
+          description: Vorgeschlagene Aktionen.
+          items:
+            $ref: '#/components/schemas/InsightAction'
+        created_at:
+          type: string
+          format: date-time
+          description: Erstellungszeitpunkt des Insights.
+          example: '2025-02-10T09:15:00Z'
+    InsightsResponse:
+      type: object
+      description: Antwort mit einer Liste aktiver Insights.
+      required:
+        - insights
+      properties:
+        insights:
+          type: array
+          description: Liste aktiver Insights.
+          items:
+            $ref: '#/components/schemas/Insight'
+    DeepAnalysisRequest:
+      type: object
+      description: Anfrage für eine tiefe KI-Analyse einer Entität.
+      required:
+        - entity_type
+        - entity_id
+      properties:
+        entity_type:
+          type: string
+          description: Typ der zu analysierenden Entität.
+          enum:
+            - item
+            - document
+            - file
+          example: document
+        entity_id:
+          type: integer
+          description: ID der zu analysierenden Entität.
+          example: 5
+    AnalysisConnection:
+      type: object
+      description: Verknüpfte Entität aus der Analyse.
+      required:
+        - entity_type
+        - entity_id
+        - reason
+      properties:
+        entity_type:
+          type: string
+          description: Typ der verknüpften Entität.
+          example: item
+        entity_id:
+          type: integer
+          description: ID der verknüpften Entität.
+          example: 12
+        reason:
+          type: string
+          description: Begründung für die Verbindung.
+          example: Thematische Überschneidung
+    AnalysisResult:
+      type: object
+      description: Ergebnis einer tiefen KI-Analyse.
+      required:
+        - summary
+        - key_topics
+        - suggested_tags
+        - connections
+        - quality_score
+      properties:
+        summary:
+          type: string
+          description: Zusammenfassung der Analyse.
+          example: Das Dokument behandelt zentrale Konzepte moderner Wissensrepräsentation.
+        key_topics:
+          type: array
+          description: Erkannte Kernthemen.
+          items:
+            type: string
+          example:
+            - knowledge graph
+            - ontology
+        suggested_tags:
+          type: array
+          description: Empfohlene Tags.
+          items:
+            type: string
+          example:
+            - ai
+            - research
+        connections:
+          type: array
+          description: Erkannte Verbindungen zu anderen Entitäten.
+          items:
+            $ref: '#/components/schemas/AnalysisConnection'
+        quality_score:
+          type: number
+          description: Qualitätsbewertung der Analyse.
+          example: 0.93
+    DeepAnalysisResponse:
+      type: object
+      description: Antwort einer erfolgreichen Deep Analysis.
+      required:
+        - analysis
+      properties:
+        analysis:
+          $ref: '#/components/schemas/AnalysisResult'
+    Collection:
+      type: object
+      description: Collection mit Regeln und Metadaten.
+      required:
+        - id
+        - title
+        - description
+        - rules
+        - created_at
+      properties:
+        id:
+          type: integer
+          description: Eindeutige Collection-ID.
+          example: 2
+        title:
+          type: string
+          description: Titel der Collection.
+          example: Fokus heute
+        description:
+          type: string
+          description: Beschreibung der Collection.
+          example: Wichtige Inhalte für den heutigen Tag
+        rules:
+          type: object
+          description: Regelbasierte Filter im JSON-Format.
+          additionalProperties: true
+          example:
+            priority:
+              gte: 0.8
+        item_count:
+          type: integer
+          description: Anzahl enthaltener Items, falls verfügbar.
+          example: 24
+        created_at:
+          type: string
+          format: date-time
+          description: Erstellungszeitpunkt der Collection.
+          example: '2025-02-12T11:45:00Z'
+    CollectionsListResponse:
+      type: object
+      description: Antwort mit einer Liste von Collections.
+      required:
+        - collections
+      properties:
+        collections:
+          type: array
+          description: Liste der Collections.
+          items:
+            $ref: '#/components/schemas/Collection'
+    CreateCollectionRequest:
+      type: object
+      description: Anfrage zum Erstellen einer Collection.
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          description: Titel der neuen Collection.
+          example: Fokus heute
+        description:
+          type: string
+          description: Optionale Beschreibung der Collection.
+          example: Wichtige Inhalte für den heutigen Tag
+        rules:
+          type: object
+          description: Regelbasierte Filter im JSON-Format.
+          additionalProperties: true
+          example:
+            priority:
+              gte: 0.8
+    FileUploadRequest:
+      type: object
+      description: Multipart-Anfrage zum Hochladen einer Datei.
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Hochzuladende Datei.
+        title:
+          type: string
+          description: Optionaler Titel der Datei.
+          example: Meeting Notes
+        tags:
+          type: string
+          description: Komma-separierte Tags.
+          example: meeting,notes,team
+    FileUploadResponse:
+      type: object
+      description: Ergebnis eines erfolgreichen Datei-Uploads.
+      required:
+        - id
+        - uuid
+        - filename
+        - mime_type
+        - size_bytes
+        - storage_key
+        - created_at
+      properties:
+        id:
+          type: integer
+          description: Interne Datei-ID.
+          example: 77
+        uuid:
+          type: string
+          format: uuid
+          description: UUID der Datei.
+          example: 550e8400-e29b-41d4-a716-446655440001
+        filename:
+          type: string
+          description: Dateiname.
+          example: notes.pdf
+        mime_type:
+          type: string
+          description: MIME-Type der Datei.
+          example: application/pdf
+        size_bytes:
+          type: integer
+          description: Dateigröße in Bytes.
+          example: 245760
+        storage_key:
+          type: string
+          description: Interner Storage-Key.
+          example: uploads/2025/02/notes.pdf
+        created_at:
+          type: string
+          format: date-time
+          description: Upload-Zeitpunkt.
+          example: '2025-02-12T12:00:00Z'
+    AiChatRequest:
+      type: object
+      description: Anfrage an den KI-Chat mit optionalem Kontext.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Nachricht an den KI-Assistenten.
+          example: Fasse meine letzten Notizen zusammen
+        conversation_id:
+          type: string
+          format: uuid
+          description: Optionale Konversations-ID für fortlaufende Chats.
+          example: 550e8400-e29b-41d4-a716-446655440002
+        context:
+          type: object
+          description: Zusätzlicher Kontext für die KI.
+          additionalProperties: true
+          example:
+            scope: recent_notes
+    HealthResponse:
+      type: object
+      description: Antwort des Health-Checks.
+      required:
+        - status
+        - version
+        - uptime
+      properties:
+        status:
+          type: string
+          description: Gesundheitsstatus des Systems.
+          enum:
+            - ok
+          example: ok
+        version:
+          type: string
+          description: Aktuelle API- oder Deploy-Version.
+          example: 1.0.0
+        uptime:
+          type: number
+          description: Laufzeit des Systems in Sekunden.
+          example: 12345.67
+    ContentTypeInfo:
+      type: object
+      description: Registrierter Content-Typ mit Zählwerten und UI-Metadaten.
+      required:
+        - type
+        - count
+        - label
+        - icon
+        - color
+      properties:
+        type:
+          type: string
+          description: Technischer Name des Content-Typs.
+          example: document
+        count:
+          type: integer
+          description: Anzahl der Inhalte dieses Typs.
+          example: 42
+        label:
+          type: string
+          description: Anzeigename des Typs.
+          example: Dokumente
+        icon:
+          type: string
+          description: Symbolname für UI-Darstellung.
+          example: file-text
+        color:
+          type: string
+          description: Farbkennung für UI-Darstellung.
+          example: blue
+    LegacyAssetPredictiveRequest:
+      type: object
+      description: Legacy-Anfrage für asset-basierte Vorschläge.
+      properties:
+        context:
+          type: string
+          description: Optionaler Kontext für die Vorschläge.
+          example: dashboard
+        limit:
+          type: integer
+          description: Maximale Anzahl der Vorschläge.
+          default: 8
+          minimum: 1
+          example: 8
+    LegacySuggestion:
+      type: object
+      description: Einzelner Vorschlag aus dem Legacy-Endpoint.
+      required:
+        - id
+        - title
+        - score
+      properties:
+        id:
+          type: integer
+          description: ID des vorgeschlagenen Assets.
+          example: 9
+        title:
+          type: string
+          description: Titel des vorgeschlagenen Assets.
+          example: Projektplan Q1
+        score:
+          type: number
+          description: Relevanzscore des Vorschlags.
+          example: 0.79
+    LegacyAssetPredictiveResponse:
+      type: object
+      description: Antwort mit Legacy-Asset-Vorschlägen.
+      required:
+        - suggestions
+      properties:
+        suggestions:
+          type: array
+          description: Liste vorgeschlagener Assets.
+          items:
+            $ref: '#/components/schemas/LegacySuggestion'
+  responses:
+    BadRequestError:
+      description: Ungültige Anfrage
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Ungültige Anfrage
+    UnauthorizedError:
+      description: Nicht authentifiziert oder Token ungültig
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Unauthorized
+    ConflictError:
+      description: Ressourcenkonflikt
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Resource conflict
+    UnprocessableEntityError:
+      description: Semantischer Validierungsfehler
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Validation failed
+    InternalServerError:
+      description: Unerwarteter Serverfehler
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Internal server error
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Token via /api/auth/sign-in

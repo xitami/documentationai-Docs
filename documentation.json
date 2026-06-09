@@ -118,5 +118,6 @@
       }
     ]
   },
-  "template": "atlas"
+  "template": "atlas",
+  "openapi": "api-reference/openapi.yaml"
 }
