@@ -1,6 +1,6 @@
 ---
 title: Content-Typen
-description: Vollständige Referenz aller 60+ Content-Typen mit Erkennungslogik, Eigenschaften und Konfiguration
+description: Vollständige Referenz aller 60+ Content-Typen mit Erkennungslogik, Registry-Eigenschaften und Template-System
 ---
 
 ## Überblick
@@ -19,19 +19,139 @@ Die zentrale Quelle für alle Typdefinitionen ist die Registry in `shared/conten
 
 ## Typ-Erkennung
 
-Brainz erkennt Content-Typen auf drei Wegen. Je nach Eingabeformat und Datenqualität kann die Erkennung eindeutig, heuristisch oder explizit erfolgen.
+Brainz verwendet eine mehrstufige Hybrid-Erkennung. Die Pipeline kombiniert schnelle Regeln, heuristische Textklassifikation, LLM-Klassifikation, Embedding-basierte Ähnlichkeit, Vision-Mappings und explizite Vorgaben. Dadurch bleibt die Erkennung bei strukturierten Daten deterministisch, bei Freitext robust und bei Medienformaten erweiterbar.
 
-### JSON-Key-Erkennung
+Die Stufen sind nicht gleichrangig. Frühe Tiers liefern günstige und oft eindeutige Signale, spätere Tiers werden nur dann zugeschaltet, wenn die vorhandene Sicherheit nicht ausreicht oder wenn der Inhalt einen anderen Eingangspfad braucht, etwa über Vision bei Bildern und Dateien.
+
+<Callout kind="info">
+
+Die Governance-Schicht `content-type-governance.js` orchestriert die Tier-Auswahl: Bei Rule-Confidence ≥ `0.85` wird kein Embedding-Call ausgelöst. Archetype-Ergebnisse überschreiben Rules nur bei Probability ≥ `40%`.
+
+</Callout>
+
+### Entscheidungsfluss
+
+Die Erkennung folgt einer Kaskade. Jeder Schritt versucht, mit möglichst wenig zusätzlichem Aufwand eine belastbare Typentscheidung zu treffen.
+
+<Steps>
+<Step title="Explizite Zuweisung prüfen" icon="check-circle">
+
+Wenn ein Client, Importer oder interner Prozess `content_type` bereits gesetzt hat, verwendet Brainz diese Angabe als primäres Signal. Das ist der bevorzugte Pfad für kontrollierte Datenimporte, Migrationsskripte und spezialisierte Create-Flows.
+
+</Step>
+
+<Step title="Tier 0a und Tier 0b ausführen" icon="code">
+
+Zuerst laufen regelbasierte Erkennungen über JSON-Felder und Textmuster. Diese Stufe ist schnell, lokal und deckt strukturierte Einträge sowie einen Teil freier Texte ab.
+
+</Step>
+
+<Step title="Bei geringer Sicherheit zu Tier 1 eskalieren" icon="zap">
+
+Wenn die Rule-Confidence unter `0.7` liegt, ruft `classifySmart()` eine LLM-Klassifikation mit der Task `intent_classify` auf. Dieser Schritt greift vor allem bei Freitext ohne klare Feldsignale.
+
+</Step>
+
+<Step title="Optional Tier 2 mit Embeddings zuschalten" icon="database">
+
+Wenn die regelbasierte Sicherheit unter `0.85` bleibt, kann `classifyContent()` zusätzlich einen Embedding-basierten Archetype-Vergleich ausführen. Dabei wird die semantische Nähe zu bekannten Typ-Zentroiden in PostgreSQL mit pgvector berechnet.
+
+</Step>
+
+<Step title="Vision-Mapping für Bilder und Dateien anwenden" icon="monitor">
+
+Bei Bild- oder Datei-Workflows wertet die Vision-Pipeline `llm_context.category` aus und ordnet diese Kategorie einem semantischen Content-Typ zu. Das ist der typische Pfad für Belege, Rechnungen, Visitenkarten oder fotografierte Notizen.
+
+</Step>
+
+<Step title="Ergebnis speichern und Feedback lernen" icon="bar-chart">
+
+Nach der Entscheidung kann `recordFeedback()` Korrekturen als Trainingssignal erfassen. Bestätigte Typen fließen in Archetypen und statistische Auswertungen zurück.
+
+</Step>
+</Steps>
+
+### Tier 0a: JSON-Key-Erkennung
 
 Wenn ein Eintrag strukturierte Daten enthält, prüft die Registry bekannte Feldnamen. Ein Typ wie `recipe` wird zum Beispiel über Felder wie `ingredients`, `instructions`, `servings`, `prep_time` oder `cook_time` erkannt. Dieses Verfahren ist die präziseste automatische Erkennung, weil es auf klaren Feldsignalen basiert.
 
 Viele Typen haben dafür eine definierte `keys`-Liste. Diese Schlüssel dienen als Trigger für die Zuordnung und oft zugleich als Grundlage für spätere Extraktion, Darstellung und Suche.
 
-### Textmuster-Erkennung
+### Tier 0b: Textmuster-Erkennung
 
 Wenn nur unstrukturierter Text vorliegt, verwendet das System Mustererkennung. Typen wie `question`, `quote`, `reminder` oder `list` werden über sprachliche Hinweise, Satzzeichen oder typische Formulierungen erkannt.
 
 Für textbasierte Typen ist ein `textConfidence`-Wert hinterlegt. Dieser Wert beschreibt die Sicherheit der Heuristik, zum Beispiel `0.90` für `question` oder `0.80` für `quote`, `reminder` und ähnliche Muster.
+
+### Tier 1: LLM-Chat-Klassifikation
+
+Wenn Tier 0 keine ausreichende Sicherheit liefert, eskaliert Brainz auf eine LLM-Klassifikation. `classifySmart()` löst diesen Schritt aus, sobald die Confidence der regelbasierten Stufe unter `0.7` liegt. Das betrifft typischerweise freie Texte ohne klare JSON-Struktur und ohne starke Musterindikatoren.
+
+Für diesen Pfad wird ein LLM-Call mit der Task `intent_classify` ausgeführt. Nach internen Messwerten feuert diese Eskalation bei ungefähr `70%` aller Freitext-Eingaben. Um wiederholte Anfragen auf inhaltlich identischen Texten zu vermeiden, cached Brainz das Ergebnis auf normalisiertem Text mit einer TTL von 10 Minuten.
+
+```javascript
+const result = await classifySmart({
+  text: normalizedText,
+  task: "intent_classify"
+})
+```
+
+Monitoring für diesen Pfad erfolgt über den Endpoint `GET /api/drop/classify-smart/stats`. Dort lassen sich unter anderem Aufrufvolumen, Cache-Treffer und Verteilung der Klassifikationspfade beobachten.
+
+### Tier 2: Embedding-Archetype-Classifier
+
+Wenn Regeln nicht stark genug sind, kann Brainz zusätzlich eine semantische Ähnlichkeitssuche über Archetypen ausführen. `classifyContent()` erzeugt dafür ein Embedding des Inhalts und vergleicht es gegen Typ-Zentroide in PostgreSQL über Cosine Similarity.
+
+Standardmäßig verwendet die Pipeline `text-embedding-3-small` mit `1024` Dimensionen. Wenn kein externer Provider verwendet wird oder ein lokaler Fallback aktiv ist, kann stattdessen `qwen3-embedding:0.6b` über Ollama eingesetzt werden.
+
+```javascript
+const embeddingResult = await classifyContent({
+  text,
+  provider: "openai",
+  model: "text-embedding-3-small"
+})
+```
+
+Die Datenbankabfrage erfolgt über `app_public.classify_by_embedding()`. Das Gewicht dieser Stufe ist dynamisch: Je mehr bestätigte Beispiele ein Typ gesammelt hat, desto stärker kann die Embedding-Komponente das Gesamtergebnis beeinflussen. Die Gewichtung steigt bis auf maximal `60%`, damit semantische Nähe mit wachsender Datenbasis relevanter wird, ohne harte Regeln vollständig zu verdrängen.
+
+Dieser Tier wird nur ausgelöst, wenn die Rule-Confidence unter `0.85` liegt. Damit bleiben eindeutige, regelbasierte Zuordnungen schnell und günstig, während Grenzfälle von zusätzlicher Semantik profitieren.
+
+### Self-Learning Feedback Loop
+
+Korrigierte oder bestätigte Zuordnungen verbessern die Archetypen fortlaufend. `recordFeedback()` schreibt Feedback nicht nur als Audit-Spur weg, sondern aktualisiert die Zentroiden per inkrementellem Running Average.
+
+Die Lernschicht verwendet zwei zentrale Tabellen:
+
+| Tabelle | Zweck |
+| --- | --- |
+| `content_type_archetypes` | Speichert pro Typ den aktuellen Centroid-Vektor und `sample_count` |
+| `content_type_feedback` | Speichert `detected_type`, `chosen_type` und `content_embedding` für Feedback- und Trainingsereignisse |
+
+Für schnelle Ähnlichkeitssuche wird ein HNSW-Index verwendet. Dadurch bleibt der Archetype-Vergleich auch bei wachsender Stichprobe performant.
+
+```sql
+select *
+from app_public.classify_by_embedding(
+  query_embedding => '[0.0142, -0.0831, 0.2274, ...]',
+  match_count => 5
+);
+```
+
+### Vision-Klassifikation
+
+Für Bilder und Dateien nutzt Brainz einen separaten Vision-Pfad. Die Vision-Pipeline schreibt eine Kategorie in `llm_context.category`, die anschließend auf semantische Content-Typen gemappt wird.
+
+Typische Zuordnungen sind direkt und zweckgebunden:
+
+| Vision-Kategorie | Gemappter Content-Typ |
+| --- | --- |
+| `receipt` | `receipt` |
+| `invoice` | `invoice` |
+| `business_card` | `contact` |
+| `notes` | `note` |
+| `document` | abhängig von Zusatzsignalen, häufig `document`, `manual` oder `article` |
+
+Dieser Pfad ist besonders wichtig für OCR- und Kamera-Inhalte, bei denen strukturierte JSON-Felder erst nachgelagert entstehen oder nur teilweise verfügbar sind.
 
 ### Explizite Zuweisung
 
@@ -45,7 +165,35 @@ Automatische Erkennung und explizite Zuweisung schließen sich nicht aus. Eine e
 
 ## Registry-Eigenschaften
 
-Jeder Typ in der Registry kann zusätzliche Metadaten definieren. Diese Eigenschaften steuern Erkennung, Titelbildung, Suche, Embeddings, Bildverhalten und spezialisierte UI-Logik.
+Die Registry definiert nicht nur, **welcher Typ erkannt wird**, sondern auch, **wie dieser Typ dargestellt, verarbeitet und im UI behandelt wird**. Ein Content-Typ ist damit zugleich Erkennungsregel, semantische Klassifikation und Render-Konfiguration.
+
+Viele Eigenschaften greifen erst im Zusammenspiel. Farbe, Icon und Label steuern die Oberfläche, während `keys[]`, `embeddingPrefix` oder `visionCategories[]` die Erkennungs- und Verarbeitungslogik beeinflussen.
+
+### Visuelle Eigenschaften
+
+Diese Eigenschaften steuern, wie ein Typ in Listen, Karten, Detailansichten und Fallback-Templates erscheint.
+
+| Eigenschaft | Bedeutung |
+| --- | --- |
+| `label` | Primärer Anzeigename des Typs, wie er in der UI gerendert wird |
+| `labelDe` | Deutsche Bezeichnung für lokalisierte Oberflächen und deutschsprachige Labels |
+| `icon` | Icon-Identifier, der in Listen, Badges, Headern und Typmarkern verwendet wird |
+| `emoji` | Unicode-Emoji für kompakte Darstellung in einfachen Oberflächen oder Fallbacks |
+| `color` | Hex-Farbwert des Typs, zum Beispiel `#d68a2e` |
+| `cssVar` | Name der CSS Custom Property, zum Beispiel `--accent-recipe` |
+| `heroImage` | Steuert Hero-Bild-Verhalten in Detailansichten, typischerweise `cover` oder `none` |
+| `mirrorImage` | Legt fest, ob Bilder für Caching und Auslieferung in ein CDN gespiegelt werden |
+
+Templates lesen Farben nicht statisch aus einzelnen Datensätzen, sondern dynamisch zur Render-Zeit über `BrainzContentTypeRegistry.getTypeColor()`. Dadurch bleiben Theme-Anpassungen, Typmigrationen und neue Registry-Werte konsistent, ohne bestehende Inhalte neu schreiben zu müssen.
+
+```javascript
+const accent = BrainzContentTypeRegistry.getTypeColor(contentType) || "#6b7585"
+element.style.setProperty("--tpl-accent", accent)
+```
+
+### Erkennungs- und Verarbeitungseigenschaften
+
+Diese Eigenschaften steuern Klassifikation, Extraktion, Suchbarkeit, Schema-Mapping und spezialisierte Create-Flows.
 
 | Eigenschaft | Bedeutung |
 | --- | --- |
@@ -54,14 +202,19 @@ Jeder Typ in der Registry kann zusätzliche Metadaten definieren. Diese Eigensch
 | `embeddingPrefix` | Präfix, das für Vektor-Embeddings und semantische Einordnung verwendet wird |
 | `textConfidence` | Vertrauenswert für textbasierte Erkennung |
 | `promotesTo` | Zieltyp für Speicherung oder Anzeige, wenn ein erkannter Typ intern auf einen anderen Typ abgebildet wird |
-| `heroImage` | Steuert, ob in der Detailansicht ein Hero-Bild verwendet wird, zum Beispiel `cover` oder `none` |
-| `mirrorImage` | Legt fest, ob Bilder in ein CDN gespiegelt und zwischengespeichert werden |
 | `visionCategories[]` | Zuordnung zu Bild- oder Kamera-Kategorien für visuelle Erkennung |
 | `extractFields[]` | Felder, die Vision- oder LLM-Pipelines bevorzugt extrahieren sollen |
 | `autoTags[]` | Tags, die bei Erkennung automatisch gesetzt werden |
 | `schemaType` | Schema.org-Mapping für strukturierte Daten |
 | `searchable` | Legt fest, ob der Typ in der Suche erscheint |
 | `create` | Verweist auf ein spezialisiertes Erstellungsmodul oder einen angepassten Create-Flow |
+| `category` | Oberkategorie des Typs, zum Beispiel `entity`, `content`, `text`, `knowledge_entity` oder `display` |
+
+<Callout kind="info">
+
+Die Registry ist nicht nur Nachschlagewerk, sondern Laufzeitkonfiguration. Änderungen an `color`, `icon`, `keys[]` oder `category` wirken direkt auf Erkennung, Templates, Suche und UI-Verhalten.
+
+</Callout>
 
 ## Strukturelle Typen
 
@@ -949,6 +1102,217 @@ Einige Typen dienen vor allem der Darstellung oder UI-Klassifikation und haben k
 Display-only-Typen sind nicht automatisch bedeutungslos. Sie können trotzdem für Rendering, Filterung, Dateivorschau oder UI-spezifische Entscheidungen relevant sein.
 
 </Callout>
+
+## Template-System (tpl)
+
+Das Template-System rendert Content-Typen nicht über einen zentralen Monolithen, sondern über eine Datei-pro-Template-Architektur in `shared/templates/`. Jeder Template-Baustein registriert sich selbst und stellt genau die Render-Modi bereit, die für seine Typen nötig sind.
+
+Dieses Modell trennt Darstellung, Styling und Typwissen sauber voneinander. Neue Typen können dadurch ein eigenes Template erhalten oder sich an ein bestehendes Mehrtypen-Template anhängen, ohne andere Renderpfade zu verändern.
+
+### Architekturüberblick
+
+Ein Template besteht in der Regel aus einem Dateipaar:
+
+| Datei | Aufgabe |
+| --- | --- |
+| `.tpl.js` | Rendering-Logik, Registrierung, Lifecycle-Hooks und Patch-Verhalten |
+| `.tpl.css` | Typ- oder templatespezifische Styles mit eigenen Akzent- und Layoutregeln |
+
+Die Template-Dateien folgen einem selbstregistrierenden UMD-Muster. Beim Laden meldet sich das Template direkt am Runtime-Registry-Objekt an.
+
+```javascript
+(function(root, factory) {
+  factory(root.BrainzTemplatesRuntime)
+})(this, function(R) {
+  R.registerTemplate("note", {
+    types: ["note", "journal", "idea", "quote"],
+    css: "note.tpl.css",
+    mini(data) {
+      return `<div class="tpl-note-mini">${data.title || "Ohne Titel"}</div>`
+    },
+    preview(data) {
+      return `<article class="tpl-note-preview">${data.body || ""}</article>`
+    },
+    full(data) {
+      return `<section class="tpl-note-full">${data.body || ""}</section>`
+    },
+    row(data) {
+      return `<div class="tpl-note-row">${data.title || ""}</div>`
+    },
+    stream(data) {
+      return `<div class="tpl-note-stream">${data.body || ""}</div>`
+    },
+    patchable: true,
+    structural: false,
+    editable: true
+  })
+})
+```
+
+<Callout kind="info">
+
+Templates registrieren sich selbst. Es gibt keine zentrale Schalterdatei, die jede einzelne Typzuordnung manuell importieren muss. Dadurch bleiben Template-Erweiterungen lokal und kapselbar.
+
+</Callout>
+
+### Render-Modi
+
+Dasselbe Objekt kann je nach Oberfläche in unterschiedlichen Dichten gerendert werden. Das Template-System kennt sechs Modi.
+
+| Modus | Beschreibung | Typischer Einsatz |
+| --- | --- | --- |
+| `mini` | Stark komprimierte Darstellung mit sehr wenig Text | Badge-artige Karten, Picker, Inline-Referenzen |
+| `preview` | Kurze Vorschau mit den wichtigsten Feldern | Masonry-Ansichten, Grid-Karten, Suchtreffer |
+| `full` | Vollständige Detailansicht mit allen zentralen Feldern | Einzelansicht, Modal-Detail, Reader-View |
+| `row` | Zeilenförmige Darstellung für dichte Listen | Tabellenartige Listen, Inbox, Sortieransichten |
+| `stream` | Inkrementell aktualisierbare Darstellung | Live-Feeds, Echtzeit-Ansichten, Chat-ähnliche Streams |
+| `tooltip` | Sehr kompakte Hover- oder Fokusansicht | Quick-Preview, Relation-Hover, Inspector |
+
+Nicht jedes Template muss alle Modi implementieren. Einfache Typen können Modi intern aufeinander abbilden, wenn keine eigene Spezialdarstellung nötig ist.
+
+### Registrierungsvertrag
+
+Alle Templates registrieren sich über denselben Vertrag. Der Runtime-Eintrag beschreibt sowohl die betroffenen Typen als auch die verfügbaren Renderfunktionen und Bearbeitungseigenschaften.
+
+```javascript
+R.registerTemplate("name", {
+  types: ["note"],
+  css: "note.tpl.css",
+  mini,
+  preview,
+  full,
+  row,
+  stream,
+  patchable: true,
+  structural: false,
+  editable: true
+})
+```
+
+Die wichtigsten Felder bedeuten:
+
+| Feld | Bedeutung |
+| --- | --- |
+| `types` | Liste der Content-Typen, die dieses Template verarbeitet |
+| `css` | Zugehörige CSS-Datei für templatespezifische Styles |
+| `mini`, `preview`, `full`, `row`, `stream` | Renderfunktionen pro Modus |
+| `patchable` | Gibt an, ob Feldänderungen gezielt ohne komplettes Rerendern eingespielt werden können |
+| `structural` | Kennzeichnet Templates für Strukturtypen oder nicht-semantische Container |
+| `editable` | Kennzeichnet, ob der Typ im UI direkt über dieses Template editierbar ist |
+
+### Mehrtypen-Templates
+
+Ein Template muss nicht genau einem Content-Typ entsprechen. Mehrere semantisch nahe Typen können denselben Renderer teilen, wenn ihre Datenform ähnlich genug ist.
+
+Ein typisches Beispiel ist ein Notiz-Template, das `note`, `journal`, `idea` und `quote` gemeinsam rendert. Die Unterschiede liegen dann oft nur in Akzentfarbe, Icon oder wenigen Zusatzfeldern, während die Grundstruktur aus Titel, Body und Metadaten identisch bleibt.
+
+| Template | Gemeinsame Typen | Grund für Bündelung |
+| --- | --- | --- |
+| `note.tpl.js` | `note`, `journal`, `idea`, `quote` | textzentrierte Kurzformen mit ähnlichem Layout |
+| `media.tpl.js` | `movie`, `book`, `game`, `podcast`, `music` | Cover-orientierte Medienobjekte mit Status und Metadaten |
+| `finance.tpl.js` | `invoice`, `receipt`, `expense`, `subscription` | betrag- und statusgetriebene Beleg- oder Finanzobjekte |
+
+### Datenextraktion mit Fallback-Ketten
+
+Templates greifen nicht blind auf ein einzelnes Feldobjekt zu. Das übliche Muster ist eine robuste `_typeData()`-Hilfsfunktion, die Daten aus mehreren Quellen zusammenführt und in eine renderfreundliche Form bringt.
+
+Die typische Reihenfolge lautet: `structured_data`, dann `llm_context`, dann `data`, dann `metadata`. Dadurch funktionieren Templates sowohl mit sauber strukturierten Datensätzen als auch mit teilweise extrahierten oder legacy-nahen Inhalten.
+
+```javascript
+function _typeData(entry) {
+  return (
+    entry.structured_data ||
+    entry.llm_context ||
+    entry.data ||
+    entry.metadata ||
+    {}
+  )
+}
+```
+
+Dieses Muster verhindert, dass ein Template hart an genau eine Pipeline gekoppelt ist. Wenn ein Typ künftig stärker aus Vision oder LLM-Extraktion gespeist wird, bleibt die Renderlogik stabil.
+
+### CSS-Architektur
+
+Die Template-CSS folgt üblicherweise einer BEM-nahen Benennung mit dem Präfix `tpl-`. Dadurch bleiben Styles isoliert und kollidieren nicht mit globalen UI-Klassen.
+
+Zusätzlich setzen Templates pro Typ einen Akzenttoken auf Basis der Registry. Ein typisches Muster ist `--tpl-accent: var(--accent-recipe, #ff6b35)`. Damit kann ein Template dieselbe Struktur behalten und seine Farbgebung nur über Registry- oder Theme-Werte variieren.
+
+```css
+.tpl-note {
+  --tpl-accent: var(--accent-note, #e09b3a);
+  border-left: 3px solid var(--tpl-accent);
+}
+
+.tpl-note__title {
+  color: var(--tpl-accent);
+}
+```
+
+### Fallback-Template
+
+Wenn für einen Typ kein spezialisiertes Template registriert ist, übernimmt `__fallback.tpl.js` das Rendering. Dieses Fallback liest grundlegende Anzeigeeigenschaften aus der Registry und erzeugt eine generische, aber brauchbare Darstellung.
+
+Zu den wichtigsten Registry-Feldern für dieses Rendering gehören `emoji`, `color` und `label`. Dadurch können auch neue oder seltene Typen sinnvoll erscheinen, bevor ein eigenes Template existiert.
+
+```javascript
+const meta = BrainzContentTypeRegistry.get(type) || {}
+const label = meta.label || type
+const emoji = meta.emoji || "•"
+const color = meta.color || "#6b7585"
+```
+
+<Callout kind="tip">
+
+Das Fallback-Template ist bewusst generisch. Es ist kein Ersatz für typspezifische Darstellung, aber es verhindert, dass neue Registry-Typen ohne UI-Unterstützung unsichtbar oder unlesbar werden.
+
+</Callout>
+
+### Template-Inventar
+
+Die folgende Übersicht zeigt typische Template-Dateien, die mehrere Typgruppen und Rendermuster abdecken.
+
+| Template-Datei | Verarbeitete Typen | Auffällige Eigenschaften |
+| --- | --- | --- |
+| `note.tpl.js` | `note`, `journal`, `idea`, `quote` | textzentriert, kurze Vorschauen, starke Stream-Nutzung |
+| `article.tpl.js` | `article`, `blogpost`, `manual`, `changelog` | langformorientiert, Header-Metadaten, Lesefluss |
+| `bookmark.tpl.js` | `bookmark`, `link` | URL-Vorschau, Domain-Extraktion, Open-Graph-Fallbacks |
+| `task.tpl.js` | `task`, `reminder`, `shopping_list`, `wishlist` | Statuschips, Prioritätsakzente, schnelle Row-Ansicht |
+| `project.tpl.js` | `project`, `meeting`, `event`, `appointment` | zeitbezogene Metadaten, Teilnehmer, Terminlogik |
+| `media.tpl.js` | `movie`, `book`, `game`, `podcast`, `music`, `series` | Cover, Status-Tracking, Genre- oder Plattform-Metadaten |
+| `story.tpl.js` | `story` | narrative Vollansicht, Zielgruppen- und Themenfelder |
+| `finance.tpl.js` | `invoice`, `receipt`, `expense`, `order`, `subscription` | Summen, Status, Belegdetails, kompakte Listenansicht |
+| `contact.tpl.js` | `contact`, `person`, `organization`, `profile` | Avatar, Rollen, Kommunikationskanäle |
+| `location.tpl.js` | `location`, `place`, `travel`, `transit` | Ortsbezug, Kartenhinweise, Reisekontext |
+| `medical.tpl.js` | `medical`, `warranty`, `credential`, `config`, `log_entry` | sensible oder technische Felder, zurückhaltende Vorschau |
+| `__fallback.tpl.js` | alle nicht spezialisierten Typen | generisches Registry-basiertes Rendering |
+
+### Stream-Modus und Lifecycle-Hooks
+
+`stream` ist für fortlaufend aktualisierte Inhalte gedacht. In diesem Modus kann ein Template Lifecycle-Hooks wie `onMount` und `onUpdate` verwenden, um bereits gerenderte Knoten gezielt zu aktualisieren.
+
+Das Ziel ist feldgenaues Patching statt vollständigem Rerender. Wenn sich in einem Stream nur `title`, `status` oder `progress` ändert, kann ein patchbares Template genau diese DOM-Bereiche austauschen.
+
+```javascript
+R.registerTemplate("task", {
+  types: ["task"],
+  patchable: true,
+  stream(data) {
+    return `<div class="tpl-task-stream" data-id="${data.id}">${data.title}</div>`
+  },
+  onMount(node, data) {
+    node.dataset.state = data.completed ? "done" : "open"
+  },
+  onUpdate(node, patch) {
+    if (patch.title) {
+      const titleNode = node.querySelector(".tpl-task-stream__title")
+      if (titleNode) titleNode.textContent = patch.title
+    }
+  }
+})
+```
+
+Diese chirurgischen Updates sind besonders wichtig für Live-Feeds, kollaborative Ansichten und mobile Oberflächen, in denen unnötige Reflows vermieden werden sollen.
 
 ## Subtype Accents
 
