@@ -8,6 +8,8 @@ info:
     Alle authentifizierten Endpunkte erfordern ein `Bearer <jwt>` Token im `Authorization` Header.
 
     Die vollständige interaktive Dokumentation aller 533 Endpunkte ist unter `/api/docs` verfügbar.
+
+    Zusätzlich sind jetzt auch die neuen Gruppen Pins, Chat, Notes, Spaces, Teams, Webhooks und Agents dokumentiert.
   contact:
     name: Brainz API Support
     url: https://brainz.app
@@ -41,6 +43,20 @@ tags:
     description: KI-Assistenz und Chat
   - name: System
     description: Health, Content-Types und Systeminformationen
+  - name: Pins
+    description: Pinned Content verwalten
+  - name: Chat
+    description: Team-Chat mit Echtzeit-Nachrichten
+  - name: Notes
+    description: Entity-Notizen, Kommentare und KI-Analyse
+  - name: Spaces
+    description: Multi-Space / Workspace-Verwaltung
+  - name: Teams
+    description: Team-Verwaltung und Mitglieder
+  - name: Webhooks
+    description: Webhook-Management und Event-Katalog
+  - name: Agents
+    description: Agent Framework mit Permissions und Undo
 paths:
   /api/auth/sign-in:
     post:
@@ -641,6 +657,2323 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '500':
           $ref: '#/components/responses/InternalServerError'
+  /api/pins:
+    get:
+      tags:
+        - Pins
+      summary: Gepinnte Entitäten auflisten
+      description: Liefert alle gepinnten Entitäten des aktuellen Benutzers.
+      operationId: listPins
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Pins erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PinsListResponse'
+              example:
+                pins:
+                  - entity_type: document
+                    entity_id: 5
+                    entity_uuid: 550e8400-e29b-41d4-a716-446655440000
+                    label: Projektplan Q1
+                    pinned_at: '2025-02-10T08:00:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/pins/toggle:
+    post:
+      tags:
+        - Pins
+      summary: Pin umschalten
+      description: Pinnt eine Entität an oder entfernt den Pin (Toggle).
+      operationId: togglePin
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TogglePinRequest'
+            example:
+              entity_type: document
+              entity_id: 5
+              label: Wichtiges Dokument
+      responses:
+        '200':
+          description: Pin-Status geändert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pinned:
+                    type: boolean
+                  message:
+                    type: string
+                example:
+                  pinned: true
+                  message: Pinned
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/pins/context:
+    get:
+      tags:
+        - Pins
+      summary: Pin-Kontext für KI
+      description: Liefert gepinnte Entitäten mit Titeln und Vorschauen als Kontext für den KI-Assistenten.
+      operationId: getPinsContext
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Kontext erfolgreich geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  context:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        entity_type:
+                          type: string
+                        entity_id:
+                          type: integer
+                        title:
+                          type: string
+                        preview:
+                          type: string
+              example:
+                context:
+                  - entity_type: document
+                    entity_id: 5
+                    title: Projektplan Q1
+                    preview: Kurzvorschau des gepinnten Dokuments
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/chat/messages:
+    get:
+      tags:
+        - Chat
+      summary: Chat-Verlauf laden
+      description: Lädt den Chat-Verlauf mit Cursor-Paginierung.
+      operationId: listChatMessages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team_id
+          in: query
+          required: false
+          description: Team-ID für team-spezifischen Chat.
+          schema:
+            type: integer
+        - name: before
+          in: query
+          required: false
+          description: Cursor (Nachrichten-ID) für Paginierung.
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          description: Maximale Anzahl Nachrichten.
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Nachrichten geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessagesResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags:
+        - Chat
+      summary: Nachricht senden
+      description: Sendet eine Chat-Nachricht mit optionalen Mentions und Link-Preview.
+      operationId: sendChatMessage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendChatMessageRequest'
+            example:
+              content: Hallo Team! Schaut euch das an 👀
+              team_id: 1
+      responses:
+        '201':
+          description: Nachricht gesendet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessage'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/chat/messages/{id}:
+    patch:
+      tags:
+        - Chat
+      summary: Nachricht bearbeiten
+      description: Bearbeitet eine eigene Chat-Nachricht.
+      operationId: editChatMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Nachrichten-ID.
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+            example:
+              content: Aktualisierte Nachricht
+      responses:
+        '200':
+          description: Nachricht bearbeitet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessage'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Nur eigene Nachrichten bearbeitbar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Forbidden
+    delete:
+      tags:
+        - Chat
+      summary: Nachricht löschen
+      description: Soft-Delete einer eigenen Chat-Nachricht.
+      operationId: deleteChatMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Nachrichten-ID.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Nachricht gelöscht
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Nur eigene Nachrichten löschbar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Forbidden
+  /api/chat/typing:
+    post:
+      tags:
+        - Chat
+      summary: Typing-Indikator senden
+      description: Sendet einen Typing-Indikator an einen Channel (wird per WebSocket an andere Teilnehmer gebroadcastet).
+      operationId: sendChatTypingIndicator
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                team_id:
+                  type: integer
+                  description: Optionale Team-ID für den Ziel-Channel.
+            example:
+              team_id: 1
+      responses:
+        '200':
+          description: Typing-Indikator gesendet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                example:
+                  ok: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/chat/read:
+    post:
+      tags:
+        - Chat
+      summary: Leseposition aktualisieren
+      description: Aktualisiert die letzte gelesene Nachrichten-ID.
+      operationId: updateChatReadPosition
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - last_msg_id
+              properties:
+                team_id:
+                  type: integer
+                last_msg_id:
+                  type: integer
+            example:
+              team_id: 1
+              last_msg_id: 123
+      responses:
+        '200':
+          description: Position aktualisiert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/chat/link-preview:
+    get:
+      tags:
+        - Chat
+      summary: Link-Preview abrufen
+      description: Lädt OGP-Metadaten (Titel, Bild, Beschreibung) für eine URL.
+      operationId: getChatLinkPreview
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: url
+          in: query
+          required: true
+          description: URL für die Vorschau (http/https).
+          schema:
+            type: string
+            format: uri
+      responses:
+        '200':
+          description: Link-Preview geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkPreview'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/notes/{entityType}/{entityId}:
+    get:
+      tags:
+        - Notes
+      summary: Notizen einer Entität
+      description: Listet alle Notizen für eine bestimmte Entität auf.
+      operationId: listNotesForEntity
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: path
+          required: true
+          description: Typ der Zielentität.
+          schema:
+            type: string
+            enum:
+              - item
+              - document
+              - file
+              - collection
+              - note
+              - brainflow
+              - asset
+              - ai
+              - chat_message
+        - name: entityId
+          in: path
+          required: true
+          description: Numerische ID der Zielentität.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Notizen geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/notes/{entityType}/{entityId}/related:
+    get:
+      tags:
+        - Notes
+      summary: Verwandte Notizen
+      description: Liefert verwandte Notizen aus verknüpften Entitäten (neural-graph-aware).
+      operationId: getRelatedNotes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: path
+          required: true
+          description: Typ der Zielentität.
+          schema:
+            type: string
+            enum:
+              - item
+              - document
+              - file
+              - collection
+              - note
+              - brainflow
+              - asset
+              - ai
+              - chat_message
+        - name: entityId
+          in: path
+          required: true
+          description: Numerische ID der Zielentität.
+          schema:
+            type: string
+            pattern: '^\d+$'
+        - name: limit
+          in: query
+          required: false
+          description: Maximale Anzahl verwandter Notizen.
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Verwandte Notizen geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/notes:
+    post:
+      tags:
+        - Notes
+      summary: Notiz erstellen
+      description: Erstellt eine neue Notiz zu einer Entität.
+      operationId: createNote
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+            example:
+              entity_type: document
+              entity_id: 5
+              body: Wichtiger Abschnitt zu Kapitel 3
+              note_type: comment
+      responses:
+        '201':
+          description: Notiz erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/notes/{noteId}:
+    put:
+      tags:
+        - Notes
+      summary: Notiz aktualisieren
+      description: Aktualisiert den Inhalt oder Status einer Notiz.
+      operationId: updateNote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          description: Eindeutige Notiz-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        '200':
+          description: Notiz aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Notiz nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not found
+    delete:
+      tags:
+        - Notes
+      summary: Notiz löschen
+      description: Löscht eine Notiz.
+      operationId: deleteNote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          description: Eindeutige Notiz-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Notiz gelöscht
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Notiz nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Not found
+  /api/notes/{noteId}/pin:
+    post:
+      tags:
+        - Notes
+      summary: Notiz pinnen/entpinnen
+      description: Schaltet den Pin-Status einer Notiz um.
+      operationId: toggleNotePin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          description: Eindeutige Notiz-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Pin-Status geändert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/notes/analyze/{entityType}/{entityId}:
+    post:
+      tags:
+        - Notes
+      summary: KI Deep Analysis
+      description: Führt eine tiefe KI-Analyse durch und generiert Insight-Notizen.
+      operationId: analyzeEntityNotes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: path
+          required: true
+          description: Typ der Zielentität.
+          schema:
+            type: string
+            enum:
+              - item
+              - document
+              - file
+              - collection
+              - note
+              - brainflow
+              - asset
+              - ai
+              - chat_message
+        - name: entityId
+          in: path
+          required: true
+          description: Numerische ID der Zielentität.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Analyse abgeschlossen, Insight-Notizen generiert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Note'
+              example:
+                notes:
+                  - id: 301
+                    entity_type: document
+                    entity_id: 5
+                    body: KI-generierte Analyse-Notiz
+                    note_type: ai_insight
+                    pinned: false
+                    author_id: 42
+                    parent_id: 0
+                    metadata: {}
+                    created_at: '2025-02-12T13:00:00Z'
+                    updated_at: '2025-02-12T13:00:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/notes/save-chat/{entityType}/{entityId}:
+    post:
+      tags:
+        - Notes
+      summary: Chat als Notiz speichern
+      description: Fasst eine Chat-Konversation zusammen und speichert sie als Notiz.
+      operationId: saveChatAsNote
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: path
+          required: true
+          description: Typ der Zielentität.
+          schema:
+            type: string
+            enum:
+              - item
+              - document
+              - file
+              - collection
+              - note
+              - brainflow
+              - asset
+              - ai
+              - chat_message
+        - name: entityId
+          in: path
+          required: true
+          description: Numerische ID der Zielentität.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveChatAsNoteRequest'
+            example:
+              messages:
+                - role: user
+                  content: Was ist der Hauptpunkt dieses Dokuments?
+                - role: assistant
+                  content: Das Dokument behandelt...
+      responses:
+        '201':
+          description: Chat-Zusammenfassung als Notiz gespeichert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/spaces:
+    get:
+      tags:
+        - Spaces
+      summary: Spaces auflisten
+      description: Listet alle Spaces des aktuellen Benutzers auf.
+      operationId: listSpaces
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Spaces geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpacesListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags:
+        - Spaces
+      summary: Space erstellen
+      description: Erstellt einen neuen Space.
+      operationId: createSpace
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSpaceRequest'
+            example:
+              name: Forschung
+              description: Space für Forschungsthemen
+      responses:
+        '201':
+          description: Space erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Space'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/spaces/switch:
+    post:
+      tags:
+        - Spaces
+      summary: Space wechseln
+      description: Wechselt den aktiven Space und gibt ein neues JWT zurück.
+      operationId: switchSpace
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - spaceId
+              properties:
+                spaceId:
+                  type: string
+                  description: ID des Ziel-Spaces.
+            example:
+              spaceId: '3'
+      responses:
+        '200':
+          description: Space gewechselt, neues Token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  space:
+                    $ref: '#/components/schemas/Space'
+                example:
+                  token: eyJhbGciOiJIUzI1NiJ9.space.example
+                  space:
+                    id: 3
+                    name: forschung
+                    display_name: Forschung
+                    type: workspace
+                    icon: flask
+                    color: blue
+                    member_count: 5
+                    role: admin
+                    is_default: false
+                    created_at: '2025-02-01T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Space nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Space nicht gefunden
+  /api/spaces/{id}/members:
+    get:
+      tags:
+        - Spaces
+      summary: Space-Mitglieder
+      description: Listet alle Mitglieder eines Spaces auf.
+      operationId: listSpaceMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Space-ID.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Mitglieder geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SpaceMember'
+              example:
+                members:
+                  - user_id: 42
+                    email: user@brainz.app
+                    display_name: Max Mustermann
+                    role: admin
+                    joined_at: '2025-02-01T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/spaces/{id}/invite:
+    post:
+      tags:
+        - Spaces
+      summary: Benutzer einladen
+      description: Lädt einen Benutzer per E-Mail in einen Space ein. Erfordert Admin- oder Owner-Rolle.
+      operationId: inviteToSpace
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Space-ID.
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum:
+                    - member
+                    - admin
+                  default: member
+            example:
+              email: colleague@example.com
+              role: member
+      responses:
+        '200':
+          description: Einladung gesendet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite_token:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  invite_token: invite-token-example
+                  message: Einladung gesendet
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Nur Admin/Owner darf einladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Forbidden
+  /api/spaces/invites/{token}/accept:
+    post:
+      tags:
+        - Spaces
+      summary: Einladung annehmen
+      description: Nimmt eine Space-Einladung an.
+      operationId: acceptSpaceInvite
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Einladungstoken.
+          schema:
+            type: string
+            minLength: 10
+      responses:
+        '200':
+          description: Einladung angenommen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  space:
+                    $ref: '#/components/schemas/Space'
+                  message:
+                    type: string
+                example:
+                  space:
+                    id: 3
+                    name: forschung
+                    display_name: Forschung
+                    type: workspace
+                    icon: flask
+                    color: blue
+                    member_count: 6
+                    role: member
+                    is_default: false
+                    created_at: '2025-02-01T10:00:00Z'
+                  message: Einladung angenommen
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Einladung ungültig oder abgelaufen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Einladung ungültig oder abgelaufen
+  /api/teams:
+    get:
+      tags:
+        - Teams
+      summary: Meine Teams
+      description: Listet alle Teams auf, in denen der aktuelle Benutzer Mitglied ist.
+      operationId: listMyTeams
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Teams geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamsListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags:
+        - Teams
+      summary: Team erstellen
+      description: Erstellt ein neues Team.
+      operationId: createTeam
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTeamRequest'
+            example:
+              name: Backend Team
+              description: Alle Backend-Entwickler
+              color: '#4A90D9'
+      responses:
+        '201':
+          description: Team erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/teams/all:
+    get:
+      tags:
+        - Teams
+      summary: Alle Teams im Tenant
+      description: Listet alle Teams des aktuellen Tenants auf.
+      operationId: listAllTeams
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Alle Teams geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamsListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/teams/{teamId}:
+    get:
+      tags:
+        - Teams
+      summary: Team-Details
+      description: Liefert Details eines Teams.
+      operationId: getTeam
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          description: Eindeutige Team-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Team geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Team nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Team nicht gefunden
+    put:
+      tags:
+        - Teams
+      summary: Team aktualisieren
+      description: Aktualisiert Name, Beschreibung, Farbe oder Avatar eines Teams.
+      operationId: updateTeam
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          description: Eindeutige Team-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTeamRequest'
+      responses:
+        '200':
+          description: Team aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Team nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Team nicht gefunden
+    delete:
+      tags:
+        - Teams
+      summary: Team löschen
+      description: Löscht ein Team endgültig.
+      operationId: deleteTeam
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          description: Eindeutige Team-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Team gelöscht
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Team nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Team nicht gefunden
+  /api/teams/{teamId}/members:
+    get:
+      tags:
+        - Teams
+      summary: Team-Mitglieder
+      description: Listet alle Mitglieder eines Teams auf.
+      operationId: listTeamMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          description: Eindeutige Team-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Mitglieder geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TeamMember'
+              example:
+                members:
+                  - user_id: 42
+                    display_name: Max Mustermann
+                    email: user@brainz.app
+                    role: owner
+                    joined_at: '2025-02-01T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags:
+        - Teams
+      summary: Mitglied hinzufügen
+      description: Fügt einen Benutzer zum Team hinzu.
+      operationId: addTeamMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          description: Eindeutige Team-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: integer
+                role:
+                  type: string
+                  enum:
+                    - member
+                    - admin
+                    - owner
+                  default: member
+            example:
+              user_id: 42
+              role: member
+      responses:
+        '201':
+          description: Mitglied hinzugefügt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/teams/{teamId}/members/{userId}:
+    delete:
+      tags:
+        - Teams
+      summary: Mitglied entfernen
+      description: Entfernt ein Mitglied aus dem Team.
+      operationId: removeTeamMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          description: Eindeutige Team-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+        - name: userId
+          in: path
+          required: true
+          description: Eindeutige Benutzer-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Mitglied entfernt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Mitglied nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Mitglied nicht gefunden
+  /api/webhooks/events/catalog:
+    get:
+      tags:
+        - Webhooks
+      summary: Event-Katalog
+      description: Listet alle verfügbaren Webhook-Event-Typen auf (z.B. "items.INSERT", "documents.UPDATE").
+      operationId: listWebhookEventCatalog
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Event-Katalog geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: string
+                example:
+                  events:
+                    - '*'
+                    - items.INSERT
+                    - items.UPDATE
+                    - items.DELETE
+                    - documents.INSERT
+                    - documents.UPDATE
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/webhooks:
+    get:
+      tags:
+        - Webhooks
+      summary: Webhooks auflisten
+      description: Listet alle Webhooks des aktuellen Tenants auf.
+      operationId: listWebhooks
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Webhooks geladen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags:
+        - Webhooks
+      summary: Webhook erstellen
+      description: Erstellt einen neuen Webhook mit URL, Events und optionalem HMAC-Secret.
+      operationId: createWebhook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+            example:
+              url: https://example.com/webhook
+              events:
+                - items.INSERT
+                - documents.UPDATE
+              secret: my-hmac-secret
+              description: Benachrichtigung bei neuen Items
+      responses:
+        '201':
+          description: Webhook erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/webhooks/{id}:
+    get:
+      tags:
+        - Webhooks
+      summary: Webhook abrufen
+      description: Liefert Details eines einzelnen Webhooks.
+      operationId: getWebhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Webhook-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Webhook geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Webhook nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Webhook nicht gefunden
+    patch:
+      tags:
+        - Webhooks
+      summary: Webhook aktualisieren
+      description: Aktualisiert URL, Events, Secret, Header oder Status eines Webhooks.
+      operationId: updateWebhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Webhook-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWebhookRequest'
+      responses:
+        '200':
+          description: Webhook aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Webhook nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Webhook nicht gefunden
+    delete:
+      tags:
+        - Webhooks
+      summary: Webhook löschen
+      description: Löscht einen Webhook endgültig.
+      operationId: deleteWebhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Webhook-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Webhook gelöscht
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                example:
+                  success: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Webhook nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Webhook nicht gefunden
+  /api/webhooks/{id}/deliveries:
+    get:
+      tags:
+        - Webhooks
+      summary: Delivery-Log
+      description: Liefert das Zustellungsprotokoll eines Webhooks.
+      operationId: getWebhookDeliveries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Webhook-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+        - name: limit
+          in: query
+          required: false
+          description: Maximale Anzahl Delivery-Einträge.
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: Deliveries geladen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookDelivery'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Webhook nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Webhook nicht gefunden
+  /api/webhooks/{id}/test:
+    post:
+      tags:
+        - Webhooks
+      summary: Test-Ping senden
+      description: Sendet einen Test-Ping an die Webhook-URL.
+      operationId: testWebhook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Webhook-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Test-Ergebnis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  status:
+                    type: integer
+                  response:
+                    type: string
+                example:
+                  success: true
+                  status: 200
+                  response: OK
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Webhook nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Webhook nicht gefunden
+  /api/agents:
+    get:
+      tags:
+        - Agents
+      summary: Agents auflisten
+      description: Listet alle registrierten Agents mit Statistiken auf.
+      operationId: listAgents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Agents geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Agent'
+              example:
+                agents:
+                  - id: content-organizer
+                    name: Content Organizer
+                    description: Organisiert Inhalte automatisch
+                    enabled: true
+                    config: {}
+                    last_run_at: '2025-02-12T12:00:00Z'
+                    total_runs: 15
+                    total_actions: 132
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/permissions/catalog:
+    get:
+      tags:
+        - Agents
+      summary: Permission-Katalog
+      description: Listet alle verfügbaren System-Permissions für Agents auf.
+      operationId: listAgentPermissionsCatalog
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Katalog geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  permissions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        label:
+                          type: string
+                        description:
+                          type: string
+              example:
+                permissions:
+                  - key: content.write
+                    label: Inhalte schreiben
+                    description: Darf Inhalte erstellen und aktualisieren
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/runs:
+    get:
+      tags:
+        - Agents
+      summary: Agent-Runs auflisten
+      description: Listet Runs über alle Agents mit Paginierung.
+      operationId: listAgentRuns
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximale Anzahl Runs.
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          description: Startoffset für die Paginierung.
+          schema:
+            type: integer
+            default: 0
+        - name: agent_id
+          in: query
+          required: false
+          description: Filter nach Agent-ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Runs geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentRun'
+              example:
+                runs:
+                  - id: 1
+                    agent_id: content-organizer
+                    status: completed
+                    actions_count: 8
+                    started_at: '2025-02-12T11:00:00Z'
+                    completed_at: '2025-02-12T11:02:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/runs/{id}:
+    get:
+      tags:
+        - Agents
+      summary: Run-Details
+      description: Liefert Details eines Agent-Runs inkl. aller Aktionen.
+      operationId: getAgentRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Run-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Run geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run:
+                    $ref: '#/components/schemas/AgentRun'
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentAction'
+              example:
+                run:
+                  id: 1
+                  agent_id: content-organizer
+                  status: completed
+                  actions_count: 2
+                  started_at: '2025-02-12T11:00:00Z'
+                  completed_at: '2025-02-12T11:02:00Z'
+                actions:
+                  - id: 10
+                    run_id: 1
+                    agent_id: content-organizer
+                    action_type: update_tag
+                    entity_type: document
+                    entity_id: 5
+                    status: completed
+                    details: {}
+                    created_at: '2025-02-12T11:01:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Run nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Run nicht gefunden
+  /api/agents/runs/{id}/undo:
+    post:
+      tags:
+        - Agents
+      summary: Run rückgängig machen
+      description: Macht alle Aktionen eines Agent-Runs rückgängig.
+      operationId: undoAgentRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Run-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Run rückgängig gemacht
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reverted:
+                    type: integer
+                  message:
+                    type: string
+                example:
+                  reverted: 2
+                  message: Run rückgängig gemacht
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Run nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Run nicht gefunden
+  /api/agents/actions/{id}/undo:
+    post:
+      tags:
+        - Agents
+      summary: Einzelne Aktion rückgängig
+      description: Macht eine einzelne Agent-Aktion rückgängig.
+      operationId: undoAgentAction
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Aktions-ID.
+          schema:
+            type: string
+            pattern: '^\d+$'
+      responses:
+        '200':
+          description: Aktion rückgängig gemacht
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  action:
+                    $ref: '#/components/schemas/AgentAction'
+                  message:
+                    type: string
+                example:
+                  action:
+                    id: 10
+                    run_id: 1
+                    agent_id: content-organizer
+                    action_type: update_tag
+                    entity_type: document
+                    entity_id: 5
+                    status: reverted
+                    details: {}
+                    created_at: '2025-02-12T11:01:00Z'
+                  message: Aktion rückgängig gemacht
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/actions/bulk-undo:
+    post:
+      tags:
+        - Agents
+      summary: Bulk-Undo
+      description: Macht alle Aktionen eines Agents in einem Zeitraum rückgängig.
+      operationId: bulkUndoAgentActions
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - agent_id
+                - since
+                - until
+              properties:
+                agent_id:
+                  type: string
+                since:
+                  type: string
+                  format: date-time
+                until:
+                  type: string
+                  format: date-time
+            example:
+              agent_id: content-organizer
+              since: '2025-02-01T00:00:00Z'
+              until: '2025-02-10T23:59:59Z'
+      responses:
+        '200':
+          description: Bulk-Undo abgeschlossen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reverted:
+                    type: integer
+                  message:
+                    type: string
+                example:
+                  reverted: 24
+                  message: Bulk-Undo abgeschlossen
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/actions/audit:
+    get:
+      tags:
+        - Agents
+      summary: Audit-Trail
+      description: Liefert den Audit-Trail aller Agent-Aktionen.
+      operationId: getAgentAuditTrail
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximale Anzahl Aktionen.
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          required: false
+          description: Startoffset für die Paginierung.
+          schema:
+            type: integer
+            default: 0
+        - name: agent_id
+          in: query
+          required: false
+          description: Filter nach Agent-ID.
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Filter nach Aktionsstatus.
+          schema:
+            type: string
+        - name: entity_type
+          in: query
+          required: false
+          description: Filter nach Entitätstyp.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit-Trail geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentAction'
+                  total:
+                    type: integer
+              example:
+                actions:
+                  - id: 10
+                    run_id: 1
+                    agent_id: content-organizer
+                    action_type: update_tag
+                    entity_type: document
+                    entity_id: 5
+                    status: completed
+                    details: {}
+                    created_at: '2025-02-12T11:01:00Z'
+                total: 1
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/{id}:
+    get:
+      tags:
+        - Agents
+      summary: Agent-Details
+      description: Liefert Details eines Agents mit seinen letzten Runs.
+      operationId: getAgent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Agent-ID.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        '200':
+          description: Agent geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/Agent'
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentRun'
+              example:
+                agent:
+                  id: content-organizer
+                  name: Content Organizer
+                  description: Organisiert Inhalte automatisch
+                  enabled: true
+                  config: {}
+                  last_run_at: '2025-02-12T12:00:00Z'
+                  total_runs: 15
+                  total_actions: 132
+                runs:
+                  - id: 1
+                    agent_id: content-organizer
+                    status: completed
+                    actions_count: 8
+                    started_at: '2025-02-12T11:00:00Z'
+                    completed_at: '2025-02-12T11:02:00Z'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Agent nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Agent nicht gefunden
+  /api/agents/{id}/trigger:
+    post:
+      tags:
+        - Agents
+      summary: Agent manuell auslösen
+      description: Triggert einen Agent-Run manuell.
+      operationId: triggerAgent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Agent-ID.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        '200':
+          description: Agent getriggert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Agent getriggert
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Agent nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Agent nicht gefunden
+  /api/agents/{id}/config:
+    put:
+      tags:
+        - Agents
+      summary: Agent-Konfiguration aktualisieren
+      description: Aktualisiert die Konfiguration eines Agents.
+      operationId: updateAgentConfig
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Agent-ID.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - config
+              properties:
+                config:
+                  type: object
+                  additionalProperties: true
+            example:
+              config:
+                schedule: 0 */6 * * *
+                max_actions: 10
+      responses:
+        '200':
+          description: Konfiguration aktualisiert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      config:
+                        type: object
+                example:
+                  agent:
+                    id: content-organizer
+                    config:
+                      schedule: 0 */6 * * *
+                      max_actions: 10
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Agent nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Agent nicht gefunden
+  /api/agents/{id}/enabled:
+    put:
+      tags:
+        - Agents
+      summary: Agent aktivieren/deaktivieren
+      description: Aktiviert oder deaktiviert einen Agent.
+      operationId: setAgentEnabled
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Agent-ID.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - enabled
+              properties:
+                enabled:
+                  type: boolean
+            example:
+              enabled: true
+      responses:
+        '200':
+          description: Status geändert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      enabled:
+                        type: boolean
+                example:
+                  agent:
+                    id: content-organizer
+                    enabled: true
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Agent nicht gefunden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Agent nicht gefunden
+  /api/agents/{id}/permissions:
+    get:
+      tags:
+        - Agents
+      summary: Agent-Permissions
+      description: Liefert die effektiven Permissions eines Agents.
+      operationId: getAgentPermissions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Agent-ID.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        '200':
+          description: Permissions geladen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_id:
+                    type: string
+                  required:
+                    type: array
+                    items:
+                      type: string
+                  effective:
+                    type: array
+                    items:
+                      type: string
+                  catalog:
+                    type: array
+                    items:
+                      type: object
+              example:
+                agent_id: content-organizer
+                required:
+                  - content.read
+                effective:
+                  - content.read
+                  - content.write
+                catalog:
+                  - key: content.write
+                    label: Inhalte schreiben
+                    description: Darf Inhalte erstellen und aktualisieren
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/{id}/permissions/grant:
+    post:
+      tags:
+        - Agents
+      summary: Permission gewähren
+      description: Gewährt einem Agent eine Permission.
+      operationId: grantAgentPermission
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Agent-ID.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - permission
+              properties:
+                permission:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+            example:
+              permission: content.write
+      responses:
+        '200':
+          description: Permission gewährt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  effective:
+                    type: array
+                    items:
+                      type: string
+                example:
+                  message: Permission gewährt
+                  effective:
+                    - content.read
+                    - content.write
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /api/agents/{id}/permissions/deny:
+    post:
+      tags:
+        - Agents
+      summary: Permission verweigern
+      description: Verweigert einem Agent eine Permission.
+      operationId: denyAgentPermission
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Eindeutige Agent-ID.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - permission
+              properties:
+                permission:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+            example:
+              permission: content.write
+      responses:
+        '200':
+          description: Permission verweigert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  effective:
+                    type: array
+                    items:
+                      type: string
+                example:
+                  message: Permission verweigert
+                  effective:
+                    - content.read
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
 components:
   schemas:
     ErrorResponse:
@@ -1422,6 +3755,543 @@ components:
           description: Liste vorgeschlagener Assets.
           items:
             $ref: '#/components/schemas/LegacySuggestion'
+    TogglePinRequest:
+      type: object
+      description: Anfrage zum Pinnen/Entpinnen einer Entität.
+      properties:
+        entity_type:
+          type: string
+          enum:
+            - item
+            - document
+            - file
+            - collection
+            - note
+            - brainflow
+            - asset
+            - ai
+            - chat_message
+        entity_id:
+          oneOf:
+            - type: integer
+            - type: string
+              pattern: '^\d+$'
+        entity_uuid:
+          type: string
+          format: uuid
+        label:
+          type: string
+          maxLength: 500
+    PinEntry:
+      type: object
+      properties:
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+        entity_uuid:
+          type: string
+          format: uuid
+        label:
+          type: string
+        pinned_at:
+          type: string
+          format: date-time
+    PinsListResponse:
+      type: object
+      properties:
+        pins:
+          type: array
+          items:
+            $ref: '#/components/schemas/PinEntry'
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        author_id:
+          type: integer
+        author_name:
+          type: string
+        team_id:
+          type: integer
+        parent_id:
+          type: integer
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ChatMessagesResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+    SendChatMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        team_id:
+          type: integer
+        parent_id:
+          type: integer
+        metadata:
+          type: object
+          properties:
+            mentions:
+              type: array
+              items:
+                type: integer
+            link_preview:
+              type: object
+              properties:
+                url:
+                  type: string
+                title:
+                  type: string
+                description:
+                  type: string
+                image:
+                  type: string
+                site_name:
+                  type: string
+                favicon:
+                  type: string
+    LinkPreview:
+      type: object
+      properties:
+        url:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        site_name:
+          type: string
+        favicon:
+          type: string
+    Note:
+      type: object
+      properties:
+        id:
+          type: integer
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+        body:
+          type: string
+        note_type:
+          type: string
+          enum:
+            - comment
+            - ai_insight
+            - ai_question
+            - idea
+            - todo
+            - chat_summary
+            - annotation
+        pinned:
+          type: boolean
+        author_id:
+          type: integer
+        parent_id:
+          type: integer
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    NotesListResponse:
+      type: object
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+    CreateNoteRequest:
+      type: object
+      required:
+        - body
+      properties:
+        entity_type:
+          type: string
+          enum:
+            - item
+            - document
+            - file
+            - collection
+            - note
+            - brainflow
+            - asset
+            - ai
+            - chat_message
+        entity_id:
+          oneOf:
+            - type: integer
+            - type: string
+              pattern: '^\d+$'
+        entity_uuid:
+          type: string
+          format: uuid
+        body:
+          type: string
+          minLength: 1
+          maxLength: 50000
+        note_type:
+          type: string
+          enum:
+            - comment
+            - ai_insight
+            - ai_question
+            - idea
+            - todo
+            - chat_summary
+            - annotation
+          default: comment
+        parent_id:
+          type: integer
+        metadata:
+          type: object
+    UpdateNoteRequest:
+      type: object
+      properties:
+        body:
+          type: string
+          maxLength: 50000
+        pinned:
+          type: boolean
+        metadata:
+          type: object
+    SaveChatAsNoteRequest:
+      type: object
+      required:
+        - messages
+      properties:
+        messages:
+          type: array
+          minItems: 2
+          maxItems: 200
+          items:
+            type: object
+            required:
+              - role
+              - content
+            properties:
+              role:
+                type: string
+                enum:
+                  - user
+                  - assistant
+                  - system
+              content:
+                type: string
+                maxLength: 50000
+    Space:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        display_name:
+          type: string
+        type:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        member_count:
+          type: integer
+        role:
+          type: string
+        is_default:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    SpacesListResponse:
+      type: object
+      properties:
+        spaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Space'
+    CreateSpaceRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+    SpaceMember:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        email:
+          type: string
+        display_name:
+          type: string
+        role:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+    Team:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        avatar_url:
+          type: string
+        member_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    TeamsListResponse:
+      type: object
+      properties:
+        teams:
+          type: array
+          items:
+            $ref: '#/components/schemas/Team'
+    CreateTeamRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+        description:
+          type: string
+          maxLength: 2000
+        color:
+          type: string
+          pattern: '^#[0-9a-fA-F]{3,8}$'
+        avatar_url:
+          type: string
+          format: uri
+          maxLength: 2048
+    UpdateTeamRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        color:
+          type: string
+          pattern: '^#[0-9a-fA-F]{3,8}$'
+        avatar_url:
+          type: string
+          format: uri
+          maxLength: 2048
+    TeamMember:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        display_name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum:
+            - member
+            - admin
+            - owner
+        joined_at:
+          type: string
+          format: date-time
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: integer
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        is_active:
+          type: boolean
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateWebhookRequest:
+      type: object
+      required:
+        - url
+        - events
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+        events:
+          type: array
+          items:
+            type: string
+            pattern: '^(\*|[a-z_]+\.(INSERT|UPDATE|DELETE))$'
+          minItems: 1
+          maxItems: 50
+        secret:
+          type: string
+          maxLength: 500
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        description:
+          type: string
+          maxLength: 1000
+    UpdateWebhookRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+        events:
+          type: array
+          items:
+            type: string
+            pattern: '^(\*|[a-z_]+\.(INSERT|UPDATE|DELETE))$'
+          minItems: 1
+          maxItems: 50
+        secret:
+          type: string
+          maxLength: 500
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        description:
+          type: string
+          maxLength: 1000
+        is_active:
+          type: boolean
+    WebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: integer
+        webhook_id:
+          type: integer
+        event:
+          type: string
+        status_code:
+          type: integer
+        response_body:
+          type: string
+        success:
+          type: boolean
+        delivered_at:
+          type: string
+          format: date-time
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+        config:
+          type: object
+        last_run_at:
+          type: string
+          format: date-time
+        total_runs:
+          type: integer
+        total_actions:
+          type: integer
+    AgentRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        agent_id:
+          type: string
+        status:
+          type: string
+        actions_count:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    AgentAction:
+      type: object
+      properties:
+        id:
+          type: integer
+        run_id:
+          type: integer
+        agent_id:
+          type: string
+        action_type:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+        status:
+          type: string
+        details:
+          type: object
+        created_at:
+          type: string
+          format: date-time
   responses:
     BadRequestError:
       description: Ungültige Anfrage
