@@ -1,0 +1,979 @@
+---
+title: Content-Typen
+description: Vollständige Referenz aller 60+ Content-Typen mit Erkennungslogik, Eigenschaften und Konfiguration
+---
+
+## Überblick
+
+Brainz trennt zwischen **strukturellem Typ** und **semantischem Content-Typ**. Der strukturelle Typ steckt in `kind` und beschreibt die Form eines Eintrags, während `content_type` die inhaltliche Bedeutung festlegt.
+
+Die Datenbank verwendet für `kind` die drei gespeicherten Werte `item`, `document` und `file`. Darüber hinaus kennt das System im Registry-Modell zusätzliche strukturelle Typen wie `collection` und `brainflow`, die für Darstellung, Organisation und UI-Verhalten relevant sind. `content_type` ist dagegen frei definierbar und beschreibt konkrete Inhalte wie `recipe`, `task`, `bookmark` oder `movie`.
+
+Die zentrale Quelle für alle Typdefinitionen ist die Registry in `shared/content-type-registry.js`. Neue semantische Typen lassen sich dort ergänzen, ohne das Datenbankschema zu ändern.
+
+<Callout kind="info">
+
+`kind` beantwortet die Frage, **was für eine Container- oder Strukturform** ein Eintrag hat. `content_type` beantwortet die Frage, **was der Inhalt fachlich bedeutet**.
+
+</Callout>
+
+## Typ-Erkennung
+
+Brainz erkennt Content-Typen auf drei Wegen. Je nach Eingabeformat und Datenqualität kann die Erkennung eindeutig, heuristisch oder explizit erfolgen.
+
+### JSON-Key-Erkennung
+
+Wenn ein Eintrag strukturierte Daten enthält, prüft die Registry bekannte Feldnamen. Ein Typ wie `recipe` wird zum Beispiel über Felder wie `ingredients`, `instructions`, `servings`, `prep_time` oder `cook_time` erkannt. Dieses Verfahren ist die präziseste automatische Erkennung, weil es auf klaren Feldsignalen basiert.
+
+Viele Typen haben dafür eine definierte `keys`-Liste. Diese Schlüssel dienen als Trigger für die Zuordnung und oft zugleich als Grundlage für spätere Extraktion, Darstellung und Suche.
+
+### Textmuster-Erkennung
+
+Wenn nur unstrukturierter Text vorliegt, verwendet das System Mustererkennung. Typen wie `question`, `quote`, `reminder` oder `list` werden über sprachliche Hinweise, Satzzeichen oder typische Formulierungen erkannt.
+
+Für textbasierte Typen ist ein `textConfidence`-Wert hinterlegt. Dieser Wert beschreibt die Sicherheit der Heuristik, zum Beispiel `0.90` für `question` oder `0.80` für `quote`, `reminder` und ähnliche Muster.
+
+### Explizite Zuweisung
+
+Clients, Importe oder interne Prozesse können `content_type` auch direkt setzen. Diese Variante ist sinnvoll, wenn der Ursprungstyp bereits bekannt ist oder wenn Heuristiken vermieden werden sollen, etwa bei API-Importen, Migrationsskripten oder spezialisierten Erfassungsdialogen.
+
+<Callout kind="info">
+
+Automatische Erkennung und explizite Zuweisung schließen sich nicht aus. Eine explizite Zuweisung ist in der Regel maßgeblich, während automatische Signale vor allem bei unklassifizierten Inhalten greifen.
+
+</Callout>
+
+## Registry-Eigenschaften
+
+Jeder Typ in der Registry kann zusätzliche Metadaten definieren. Diese Eigenschaften steuern Erkennung, Titelbildung, Suche, Embeddings, Bildverhalten und spezialisierte UI-Logik.
+
+| Eigenschaft | Bedeutung |
+| --- | --- |
+| `keys[]` | JSON-Feldnamen, die einen Typ triggern oder bei der Erkennung helfen |
+| `titleFields[]` | Bevorzugte Felder für automatische Titelerzeugung |
+| `embeddingPrefix` | Präfix, das für Vektor-Embeddings und semantische Einordnung verwendet wird |
+| `textConfidence` | Vertrauenswert für textbasierte Erkennung |
+| `promotesTo` | Zieltyp für Speicherung oder Anzeige, wenn ein erkannter Typ intern auf einen anderen Typ abgebildet wird |
+| `heroImage` | Steuert, ob in der Detailansicht ein Hero-Bild verwendet wird, zum Beispiel `cover` oder `none` |
+| `mirrorImage` | Legt fest, ob Bilder in ein CDN gespiegelt und zwischengespeichert werden |
+| `visionCategories[]` | Zuordnung zu Bild- oder Kamera-Kategorien für visuelle Erkennung |
+| `extractFields[]` | Felder, die Vision- oder LLM-Pipelines bevorzugt extrahieren sollen |
+| `autoTags[]` | Tags, die bei Erkennung automatisch gesetzt werden |
+| `schemaType` | Schema.org-Mapping für strukturierte Daten |
+| `searchable` | Legt fest, ob der Typ in der Suche erscheint |
+| `create` | Verweist auf ein spezialisiertes Erstellungsmodul oder einen angepassten Create-Flow |
+
+## Strukturelle Typen
+
+Diese Typen beschreiben primär die Form oder Rolle eines Eintrags im System, nicht seinen fachlichen Inhalt.
+
+<ExpandableGroup>
+<Expandable title="item">
+
+- **Label:** Element
+- **Icon:** `item`
+- **Farbe:** `#d68a2e`
+- **Erkennung:** struktureller Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Basisstruktur für einzelne Inhalte; als gespeicherter `kind`-Wert vorhanden
+
+</Expandable>
+
+<Expandable title="document">
+
+- **Label:** Dokument
+- **Icon:** `document`
+- **Farbe:** `#6b7585`
+- **Erkennung:** struktureller Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** als gespeicherter `kind`-Wert vorhanden
+
+</Expandable>
+
+<Expandable title="file">
+
+- **Label:** Datei
+- **Icon:** `file`
+- **Farbe:** `#6b7585`
+- **Erkennung:** struktureller Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** als gespeicherter `kind`-Wert vorhanden
+
+</Expandable>
+
+<Expandable title="collection">
+
+- **Label:** Sammlung
+- **Icon:** `folder`
+- **Farbe:** `#7872bc`
+- **Erkennung:** struktureller Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Registry-Typ für Gruppierung und Organisation
+
+</Expandable>
+
+<Expandable title="brainflow">
+
+- **Label:** BrainFlow
+- **Icon:** `git-merge`
+- **Farbe:** `#a78bfa`
+- **Erkennung:** struktureller Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Registry-Typ für Flow- oder Graph-Strukturen
+
+</Expandable>
+</ExpandableGroup>
+
+## Knowledge Entities
+
+Diese Typen repräsentieren Entitäten, die häufig als Beziehungspunkte in Wissen, Suche und Verknüpfungen dienen.
+
+<ExpandableGroup>
+<Expandable title="person">
+
+- **Label:** Person
+- **Icon:** `user`
+- **Farbe:** `#d06690`
+- **Erkennung:** Entity-Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für personenbasierte Wissensobjekte
+
+</Expandable>
+
+<Expandable title="organization">
+
+- **Label:** Organisation
+- **Icon:** `landmark`
+- **Farbe:** `#c86ea0`
+- **Erkennung:** Entity-Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Firmen, Teams und Institutionen
+
+</Expandable>
+
+<Expandable title="user">
+
+- **Label:** Benutzer
+- **Icon:** `at-sign`
+- **Farbe:** `#8a8f98`
+- **Erkennung:** Entity-Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** systemnahe Benutzerrepräsentation
+
+</Expandable>
+
+<Expandable title="tag">
+
+- **Label:** Tag
+- **Icon:** `tag`
+- **Farbe:** `#8a8f98`
+- **Erkennung:** Entity-Typ
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Kategorisierung und Verknüpfung
+
+</Expandable>
+</ExpandableGroup>
+
+## Dokumente & Wissen
+
+Diese Gruppe bündelt textzentrierte, wissensorientierte und dokumentartige Inhalte.
+
+<ExpandableGroup>
+<Expandable title="note">
+
+- **Label:** Notiz
+- **Icon:** `note`
+- **Farbe:** `#e09b3a`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `note`, `notes`, `memo`, `reminder`, `pinned`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** freiformige Standardklasse für kurze Wissenseinträge
+
+</Expandable>
+
+<Expandable title="article">
+
+- **Label:** Artikel
+- **Icon:** `newspaper`
+- **Farbe:** `#3a9ec4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `headline`, `byline`, `source`, `published`, `section`, `newsroom`, `journalist`, `dateline`
+- **Embedding Prefix:** `News article`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für redaktionelle oder journalistische Inhalte
+
+</Expandable>
+
+<Expandable title="blogpost">
+
+- **Label:** Blogpost
+- **Icon:** `document`
+- **Farbe:** `#3c9ac4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `author`, `excerpt`, `published_at`, `read_time`, `slug`, `featured_image`, `categories`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** geeignet für publizierte Langform-Inhalte
+
+</Expandable>
+
+<Expandable title="bookmark">
+
+- **Label:** Lesezeichen
+- **Icon:** `bookmark`
+- **Farbe:** `#3aa3c4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `url`, `href`, `link`, `favicon`, `domain`, `og_title`, `og_image`
+- **Embedding Prefix:** `Saved link`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** `promotesTo: link`
+
+</Expandable>
+
+<Expandable title="quote">
+
+- **Label:** Zitat
+- **Icon:** `quote`
+- **Farbe:** `#bd8830`
+- **Erkennung:** Textmuster
+- **Textmuster:** zitierter Text oder Zeilen mit `>`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Quote`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** erkennt kompakte Zitatblöcke ohne JSON-Struktur
+
+</Expandable>
+
+<Expandable title="idea">
+
+- **Label:** Idee
+- **Icon:** `idea`
+- **Farbe:** `#d9a83a`
+- **Erkennung:** Textmuster
+- **Textmuster:** `Idee:`, `idea:`, Formulierungen wie `what if`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Idea`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Brainstorming und Rohideen
+
+</Expandable>
+
+<Expandable title="journal">
+
+- **Label:** Tagebuch
+- **Icon:** `journal`
+- **Farbe:** `#cc7a22`
+- **Erkennung:** Textmuster
+- **Textmuster:** `Tagebuch:`, `heute war...`, `today I...`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Journal entry`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für persönliche, zeitbezogene Notizen
+
+</Expandable>
+
+<Expandable title="faq">
+
+- **Label:** FAQ
+- **Icon:** `help`
+- **Farbe:** `#3ba5c4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `question`, `answer`, `faq`, `qa`, `category`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** geeignet für Frage-Antwort-Strukturen
+
+</Expandable>
+
+<Expandable title="manual">
+
+- **Label:** Anleitung
+- **Icon:** `book-open`
+- **Farbe:** `#d98e2b`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `manual_type`, `manufacturer`, `model`, `model_number`, `set_number`, `step_count`, `assembly_steps`
+- **Embedding Prefix:** `Manual`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Bedienungs- und Aufbauanleitungen
+
+</Expandable>
+
+<Expandable title="changelog">
+
+- **Label:** Changelog
+- **Icon:** `file-text`
+- **Farbe:** `#7a8492`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `version`, `release_date`, `changes`, `breaking_changes`, `added`, `fixed`, `removed`, `deprecated`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Versionshistorien und Release Notes
+
+</Expandable>
+
+<Expandable title="question">
+
+- **Label:** Frage
+- **Icon:** `help`
+- **Farbe:** `#3ba5c4`
+- **Erkennung:** Textmuster
+- **Textmuster:** endet mit `?` oder beginnt mit typischen Fragewörtern
+- **Confidence:** `0.90`
+- **Embedding Prefix:** `Question`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** höchste textbasierte Sicherheit unter den Heuristik-Typen
+
+</Expandable>
+
+<Expandable title="list">
+
+- **Label:** Liste
+- **Icon:** `list`
+- **Farbe:** `#7872bc`
+- **Erkennung:** Textmuster
+- **Textmuster:** mindestens zwei Zeilen mit Bullet- oder Nummernmustern
+- **Confidence:** `0.85`
+- **Embedding Prefix:** `List`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** erkennt reine Listen auch ohne weitere Metadaten
+
+</Expandable>
+
+<Expandable title="recommendation">
+
+- **Label:** Empfehlung
+- **Icon:** `star`
+- **Farbe:** `#d55e82`
+- **Erkennung:** Textmuster
+- **Textmuster:** `Empfehlung:`, `Tipp:`, Formulierungen wie `must try`, `must see`, `must read`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Recommendation`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Empfehlungstexte und kuratierte Hinweise
+
+</Expandable>
+</ExpandableGroup>
+
+## Medien & Unterhaltung
+
+Diese Typen decken konsumierbare Medien, Sammlungsobjekte und rein darstellungsbezogene Formate ab.
+
+<ExpandableGroup>
+<Expandable title="movie">
+
+- **Label:** Film
+- **Icon:** `clapperboard`
+- **Farbe:** `#a478c4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `director`, `cast`, `year`, `runtime`, `tmdb_id`, `imdb_id`, `watch_status`, `streaming`, `poster_url`
+- **Embedding Prefix:** `Film/Serie`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** unterstützt Subtype Accents nach Genre
+
+</Expandable>
+
+<Expandable title="book">
+
+- **Label:** Buch
+- **Icon:** `book-open`
+- **Farbe:** `#a478c4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `isbn`, `author`, `publisher`, `pages`, `genre`, `reading_status`, `reading_progress`, `my_rating`
+- **Embedding Prefix:** `Book`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** unterstützt Subtype Accents nach Genre
+
+</Expandable>
+
+<Expandable title="game">
+
+- **Label:** Spiel
+- **Icon:** `gamepad`
+- **Farbe:** `#b074c0`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `developer`, `publisher`, `platforms`, `rawg_id`, `metacritic_score`, `play_status`, `achievements`
+- **Embedding Prefix:** `Game`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Spielebibliotheken und Status-Tracking
+
+</Expandable>
+
+<Expandable title="podcast">
+
+- **Label:** Podcast
+- **Icon:** `headphones`
+- **Farbe:** `#a478c4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `feed_url`, `artist`, `episode_count`, `listen_status`, `apple_id`, `cover_url`
+- **Embedding Prefix:** `Podcast`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Feeds, Shows und Hörstatus
+
+</Expandable>
+
+<Expandable title="music">
+
+- **Label:** Musik
+- **Icon:** `music`
+- **Farbe:** `#a872c4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `artist`, `album`, `track_name`, `release_date`, `spotify_id`, `mb_id`, `listen_status`, `cover_url`
+- **Embedding Prefix:** `Music`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Tracks, Alben und Musik-Metadaten
+
+</Expandable>
+
+<Expandable title="meme">
+
+- **Label:** Meme
+- **Icon:** `image`
+- **Farbe:** `#b074c0`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `meme_template`, `template_name`, `caption`, `top_text`, `bottom_text`, `viral_score`
+- **Embedding Prefix:** `Meme`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für visuelle Kurzform-Inhalte
+
+</Expandable>
+
+<Expandable title="image">
+
+- **Label:** Bild
+- **Icon:** `image`
+- **Farbe:** `#8a8f98`
+- **Erkennung:** Display-only
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Darstellungs- oder Dateityp ohne eigene semantische JSON-Heuristik
+
+</Expandable>
+
+<Expandable title="audio">
+
+- **Label:** Audio
+- **Icon:** `audio`
+- **Farbe:** `#8a8f98`
+- **Erkennung:** Display-only
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Darstellungs- oder Dateityp für Audiodateien
+
+</Expandable>
+
+<Expandable title="video">
+
+- **Label:** Video
+- **Icon:** `monitor`
+- **Farbe:** `#8a8f98`
+- **Erkennung:** Display-only
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Darstellungs- oder Dateityp für Videodateien
+
+</Expandable>
+
+<Expandable title="series">
+
+- **Label:** Serie
+- **Icon:** `monitor`
+- **Farbe:** `#a478c4`
+- **Erkennung:** Display-only
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Anzeige- oder Gruppierungstyp für Serieninhalte
+
+</Expandable>
+
+<Expandable title="story">
+
+- **Label:** Kindergeschichte
+- **Icon:** `moon`
+- **Farbe:** `#b074c0`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `genre`, `age_group`, `reading_time`, `characters`, `protagonist`, `moral`, `setting`, `themes`
+- **Embedding Prefix:** `Kindergeschichte`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für narrative Inhalte mit Zielgruppe und Thema
+
+</Expandable>
+</ExpandableGroup>
+
+## Organisation & Aufgaben
+
+Diese Typen helfen bei Planung, persönlicher Organisation und zeitbezogenen Workflows.
+
+<ExpandableGroup>
+<Expandable title="task">
+
+- **Label:** Aufgabe
+- **Icon:** `task`
+- **Farbe:** `#2da67a`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `due_date`, `priority`, `assignee`, `completed`, `done`, `assigned_to`, `estimated_hours`
+- **Embedding Prefix:** `Task`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** unterstützt Subtype Accents nach Priorität
+
+</Expandable>
+
+<Expandable title="project">
+
+- **Label:** Projekt
+- **Icon:** `project`
+- **Farbe:** `#7872bc`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `project_name`, `milestones`, `deadline`, `budget`, `team`, `stakeholders`, `scope`, `deliverables`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für langfristige Vorhaben mit Meilensteinen
+
+</Expandable>
+
+<Expandable title="shopping_list">
+
+- **Label:** Einkaufsliste
+- **Icon:** `shopping-cart`
+- **Farbe:** `#4f9bca`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `items`, `store`, `quantity`, `checked`, `category`
+- **Embedding Prefix:** `Einkaufsliste`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** strukturierte Liste mit Einkaufsbezug
+
+</Expandable>
+
+<Expandable title="wishlist">
+
+- **Label:** Wunschliste
+- **Icon:** `wishlist`
+- **Farbe:** `#4a95c8`
+- **Erkennung:** Textmuster
+- **Textmuster:** `Wunsch:`, `ich wünsche mir`, `wish:`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Wish`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für informelle Wunsch- und Merklisteinträge
+
+</Expandable>
+
+<Expandable title="reminder">
+
+- **Label:** Erinnerung
+- **Icon:** `clock`
+- **Farbe:** `#d68a2e`
+- **Erkennung:** Textmuster
+- **Textmuster:** temporale Trigger wie `morgen`, `remind`, `by monday`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Reminder`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** unterstützt Subtype Accents nach Priorität
+
+</Expandable>
+
+<Expandable title="meeting">
+
+- **Label:** Meeting
+- **Icon:** `users`
+- **Farbe:** `#d06690`
+- **Erkennung:** Textmuster
+- **Textmuster:** `Meeting mit`, `Besprechung`, `call with`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Meeting note`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Besprechungsnotizen und Call-Zusammenfassungen
+
+</Expandable>
+
+<Expandable title="event">
+
+- **Label:** Termin
+- **Icon:** `event`
+- **Farbe:** `#d2628a`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `start_date`, `end_date`, `venue`, `capacity`, `speakers`, `attendees`, `event_date`, `organizer`
+- **Embedding Prefix:** `Event`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für öffentliche oder gruppenbezogene Ereignisse
+
+</Expandable>
+
+<Expandable title="appointment">
+
+- **Label:** Termin
+- **Icon:** `clock`
+- **Farbe:** `#d2628a`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `appointment_time`, `appointment_date`, `patient`, `client`, `doctor`, `provider`, `duration_minutes`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** stärker auf individuelle Termine und Slots ausgerichtet
+
+</Expandable>
+</ExpandableGroup>
+
+## Geschäftlich & Finanzen
+
+Diese Typen decken Kontakte, kaufmännische Daten, operative Geschäftsvorgänge und technische Betriebsdaten ab.
+
+<ExpandableGroup>
+<Expandable title="contact">
+
+- **Label:** Kontakt
+- **Icon:** `contact`
+- **Farbe:** `#d06690`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `email`, `phone`, `company`, `role`, `first_name`, `last_name`, `address`, `linkedin`, `twitter`
+- **Embedding Prefix:** `Contact`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** unterstützt Subtype Accents nach Beziehung
+
+</Expandable>
+
+<Expandable title="product">
+
+- **Label:** Produkt
+- **Icon:** `package`
+- **Farbe:** `#4a97c4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `price`, `sku`, `in_stock`, `stock`, `currency`, `brand`, `manufacturer`, `upc`, `ean`, `asin`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Kataloge, Bestände und Handelsobjekte
+
+</Expandable>
+
+<Expandable title="invoice">
+
+- **Label:** Rechnung
+- **Icon:** `document`
+- **Farbe:** `#3e78b2`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `invoice_number`, `invoice_date`, `subtotal`, `tax`, `line_items`, `bill_to`, `payment_terms`, `vat`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** unterstützt Subtype Accents nach Kategorie
+
+</Expandable>
+
+<Expandable title="receipt">
+
+- **Label:** Kassenbon
+- **Icon:** `finance`
+- **Farbe:** `#4280b6`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `receipt_number`, `store`, `merchant`, `total`, `items`, `payment_method`, `transaction_id`, `tax`
+- **Embedding Prefix:** `Receipt`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Kaufbelege und einzelne Transaktionen
+
+</Expandable>
+
+<Expandable title="order">
+
+- **Label:** Bestellung
+- **Icon:** `package`
+- **Farbe:** `#4588bc`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `order_id`, `order_number`, `order_date`, `items`, `shipping_address`, `tracking_number`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Bestellstatus und Sendungsverfolgung
+
+</Expandable>
+
+<Expandable title="subscription">
+
+- **Label:** Abonnement
+- **Icon:** `refresh`
+- **Farbe:** `#3c70ae`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `plan`, `billing_cycle`, `renewal_date`, `subscriber`, `plan_name`, `trial_end`, `cancel_at`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für laufende Verträge und wiederkehrende Zahlungen
+
+</Expandable>
+
+<Expandable title="expense">
+
+- **Label:** Ausgabe
+- **Icon:** `finance`
+- **Farbe:** `#4680b4`
+- **Erkennung:** Textmuster
+- **Textmuster:** Währungsbeträge wie `42€`, `$50`, `EUR` sowie Wörter wie `bezahlt` oder `paid`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Expense`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** unterstützt Subtype Accents nach Kategorie
+
+</Expandable>
+
+<Expandable title="credential">
+
+- **Label:** Zugangsdaten
+- **Icon:** `credential`
+- **Farbe:** `#6b7585`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `password`, `api_key`, `secret`, `token`, `access_key`, `private_key`, `client_secret`
+- **Embedding Prefix:** `Credential`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für geheime oder sicherheitsrelevante Informationen
+
+</Expandable>
+
+<Expandable title="config">
+
+- **Label:** Konfiguration
+- **Icon:** `config`
+- **Farbe:** `#6b7585`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `settings`, `config`, `configuration`, `env`, `environment`, `options`, `preferences`, `feature_flags`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für System-, Tool- und App-Konfigurationen
+
+</Expandable>
+
+<Expandable title="job_listing">
+
+- **Label:** Stellenanzeige
+- **Icon:** `briefcase`
+- **Farbe:** `#4680b4`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `salary`, `employment_type`, `remote`, `requirements`, `qualifications`, `apply_url`, `job_title`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Recruiting und Jobdaten
+
+</Expandable>
+
+<Expandable title="course">
+
+- **Label:** Kurs
+- **Icon:** `graduation-cap`
+- **Farbe:** `#b074c0`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `curriculum`, `lessons`, `modules`, `instructor`, `enrollment`, `syllabus`, `credits`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Lernangebote und Lehrpläne
+
+</Expandable>
+
+<Expandable title="feedback">
+
+- **Label:** Feedback
+- **Icon:** `comment`
+- **Farbe:** `#c88330`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `feedback`, `suggestion`, `feature_request`, `bug_report`, `satisfaction`, `nps_score`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** bündelt Rückmeldungen, Wünsche und Fehlerberichte
+
+</Expandable>
+
+<Expandable title="testimonial">
+
+- **Label:** Referenz
+- **Icon:** `quote`
+- **Farbe:** `#cc6898`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `quote`, `testimonial`, `person`, `position`, `photo`, `company`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Kundenstimmen und Referenzzitate
+
+</Expandable>
+
+<Expandable title="review">
+
+- **Label:** Bewertung
+- **Icon:** `star`
+- **Farbe:** `#d2628a`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `rating`, `stars`, `review_text`, `reviewer`, `pros`, `cons`, `verified_purchase`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für strukturierte Bewertungen mit Pro-und-Contra-Feldern
+
+</Expandable>
+</ExpandableGroup>
+
+## Orte & Reisen
+
+Diese Typen beschreiben Orte, geografische Daten und reisebezogene Inhalte.
+
+<ExpandableGroup>
+<Expandable title="location">
+
+- **Label:** Standort
+- **Icon:** `address`
+- **Farbe:** `#c86a48`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `latitude`, `longitude`, `lat`, `lng`, `coordinates`, `geo`, `zip_code`, `city`, `region`, `street`
+- **Embedding Prefix:** `Location`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Koordinaten und adressbezogene Geodaten
+
+</Expandable>
+
+<Expandable title="place">
+
+- **Label:** Ort
+- **Icon:** `map-pin`
+- **Farbe:** `#00b894`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `geo`, `address`, `openingHoursSpecification`
+- **Embedding Prefix:** `Place`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** stärker semantisch auf Orte, Einrichtungen und Öffnungszeiten ausgerichtet
+
+</Expandable>
+
+<Expandable title="travel">
+
+- **Label:** Reise
+- **Icon:** `travel`
+- **Farbe:** `#c56d50`
+- **Erkennung:** Textmuster
+- **Textmuster:** Formulierungen wie `Flug nach`, `Hotel in`, `trip to`
+- **Confidence:** `0.80`
+- **Embedding Prefix:** `Travel`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Reisepläne und Reiseerinnerungen
+
+</Expandable>
+
+<Expandable title="transit">
+
+- **Label:** Transport
+- **Icon:** `train`
+- **Farbe:** `#c27352`
+- **Erkennung:** Display-only
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** Anzeige- oder Hilfstyp für Transportkontexte
+
+</Expandable>
+</ExpandableGroup>
+
+## Gesundheit & Persönliches
+
+Diese Typen decken persönliche Profile, Gesundheitsdaten, Garantien und Systemprotokolle ab.
+
+<ExpandableGroup>
+<Expandable title="medical">
+
+- **Label:** Gesundheit
+- **Icon:** `heart-pulse`
+- **Farbe:** `#2ba37a`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `diagnosis`, `medication`, `dosage`, `doctor`, `patient`, `blood_type`, `allergies`, `prescription`
+- **Embedding Prefix:** `Medical record`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für sensible medizinische Datensätze
+
+</Expandable>
+
+<Expandable title="warranty">
+
+- **Label:** Garantie
+- **Icon:** `clock`
+- **Farbe:** `#6b7585`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `warranty_period`, `expiry_date`, `serial_number`, `purchase_date`, `manufacturer`, `product_name`
+- **Embedding Prefix:** `Warranty`
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Garantielaufzeiten und Produktnachweise
+
+</Expandable>
+
+<Expandable title="log_entry">
+
+- **Label:** Log-Eintrag
+- **Icon:** `file-text`
+- **Farbe:** `#7a8492`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `timestamp`, `level`, `logger`, `stack_trace`, `error_code`, `severity`, `trace_id`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für technische Ereignisse, Fehler und Traces
+
+</Expandable>
+
+<Expandable title="profile">
+
+- **Label:** Profil
+- **Icon:** `user`
+- **Farbe:** `#d06690`
+- **Erkennung:** JSON-Key-Erkennung
+- **JSON-Felder:** `username`, `bio`, `avatar`, `display_name`, `social_links`, `interests`, `handle`
+- **Embedding Prefix:** nicht spezifiziert
+- **Title Fields:** nicht spezifiziert
+- **Spezialverhalten:** für Personen- oder Account-nahe Selbstdarstellungen
+
+</Expandable>
+</ExpandableGroup>
+
+## Display-only-Typen im Überblick
+
+Einige Typen dienen vor allem der Darstellung oder UI-Klassifikation und haben keine bekannte JSON-Key- oder Textmuster-Erkennung.
+
+| Typ | Label | Icon | Farbe |
+| --- | --- | --- | --- |
+| `link` | Link | `link` | `#3aa3c4` |
+| `finance` | Finanzen | `finance` | `#3e90c0` |
+| `health` | Gesundheit | `health` | `#2ba975` |
+| `code` | Code | `code` | `#6b7585` |
+| `image` | Bild | `image` | `#8a8f98` |
+| `audio` | Audio | `audio` | `#8a8f98` |
+| `video` | Video | `monitor` | `#8a8f98` |
+| `pdf` | PDF | `file-text` | `#8a8f98` |
+| `series` | Serie | `monitor` | `#a478c4` |
+| `transit` | Transport | `train` | `#c27352` |
+
+<Callout kind="info">
+
+Display-only-Typen sind nicht automatisch bedeutungslos. Sie können trotzdem für Rendering, Filterung, Dateivorschau oder UI-spezifische Entscheidungen relevant sein.
+
+</Callout>
+
+## Subtype Accents
+
+Einige Typen verwenden zusätzliche Farbvarianten, um Unterkategorien schneller erkennbar zu machen. Diese Akzente ergänzen die Grundfarbe des Typs und ersetzen sie nicht vollständig.
+
+| Typ | Differenzierung |
+| --- | --- |
+| `movie` | nach Genre, zum Beispiel Action rot, Comedy gelb, Drama blau, Horror dunkelrot, Sci-Fi cyan |
+| `book` | nach Genre, zum Beispiel Fantasy violett, Mystery indigo, Romance pink, Business blau |
+| `task` | nach Priorität, zum Beispiel Urgent rot, High amber, Medium blau, Low slate |
+| `reminder` | nach Priorität, analog zu `task` |
+| `contact` | nach Beziehung, zum Beispiel Family pink, Friend grün, Work blau |
+| `expense` | nach Kategorie, zum Beispiel Food orange, Transport blau, Entertainment violett, Shopping pink, Bills rot, Health grün |
+| `invoice` | nach Kategorie, analog zu `expense` |
+
+Diese Akzente verbessern Scannbarkeit in Listen, Boards und Detailansichten. Sie sind besonders nützlich, wenn mehrere Einträge denselben Basistyp teilen, aber fachlich unterschiedlich priorisiert oder gruppiert werden sollen.
+
+## Eigene Typen hinzufügen
+
+Neue Content-Typen werden in der Registry ergänzt, nicht über Schemaänderungen in der Datenbank. Das macht das System erweiterbar, ohne die zentrale Tabelle anzupassen.
+
+Ein neuer Typ kann eigene Erkennungsfelder, Textmuster, Präfixe, Schema-Mappings, Auto-Tags und UI-Hinweise definieren. Solange die Definition in `shared/content-type-registry.js` konsistent ist, kann Brainz neue semantische Klassen aufnehmen, ohne die Grundstruktur von `kind` und `content_type` zu verändern.
+
+<Callout kind="info">
+
+Das Registry-Modell ist die Single Source of Truth für Typdefinitionen. Wenn ein Typ in Verhalten, Darstellung oder Erkennung geändert werden soll, ist die Registry der richtige Ort dafür.
+
+</Callout>

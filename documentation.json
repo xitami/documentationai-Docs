@@ -48,6 +48,11 @@
                 "title": "Content-System",
                 "path": "features/content",
                 "icon": "database"
+              },
+              {
+                "title": "Content-Typen",
+                "path": "features/content-types",
+                "icon": "list"
               }
             ]
           },
