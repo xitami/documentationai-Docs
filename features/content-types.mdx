@@ -1314,6 +1314,165 @@ R.registerTemplate("task", {
 
 Diese chirurgischen Updates sind besonders wichtig für Live-Feeds, kollaborative Ansichten und mobile Oberflächen, in denen unnötige Reflows vermieden werden sollen.
 
+## Editor-Einbettung (Lexical)
+
+Content-Typen können direkt in den Lexical-Editor eingebettet werden. Dabei speichert das Dokument nur eine Referenz auf den Inhalt, nicht den Inhalt selbst. Die Darstellung erfolgt zur Render-Zeit über das Template-System. Dadurch bleiben eingebettete Inhalte aktuell, typspezifisch gerendert und verlinkt.
+
+### Einbettungsmechanismen
+
+Der Editor kennt vier grundlegende Einbettungsarten, die jeweils als eigener Lexical `DecoratorNode` implementiert sind.
+
+| Node | Zweck | Verhalten |
+| --- | --- | --- |
+| `BrainzEmbedNode` | Read-only Vorschau eines beliebigen Content-Eintrags | Rendert über das Template-System, lazy-loaded via IntersectionObserver |
+| `BrainzTransclusionNode` | Bidirektional editierbarer eingebetteter Inhalt | Nested Sub-Editor, Änderungen schreiben zurück in den Quellinhalt |
+| `BrainzWikiLinkNode` | Inline-Referenz im `[[Wiki-Link]]`-Stil | Rendert als nicht-editierbarer Chip im Fließtext |
+| `BrainzQueryBlockNode` | Live-Abfrage, die eine dynamische Inhaltsliste rendert | Führt eine Query zur Render-Zeit aus und zeigt Treffer als Liste, Tabelle oder Karten |
+
+### BrainzEmbedNode — Read-Only Embed
+
+Der häufigste Einbettungstyp. Das Node speichert eine Referenz bestehend aus `uuid`, `kind` und optional `contentType`. Bei der Darstellung wird der Inhalt über `GET /api/content/by-uuid/:uuid` aufgelöst und anschließend an das passende Template-System delegiert.
+
+#### Node-Eigenschaften
+
+| Eigenschaft | Typ | Bedeutung |
+| --- | --- | --- |
+| `__ref` | `{ uuid, kind, contentType? }` | Referenz auf den eingebetteten Inhalt |
+| `__mode` | `live` oder `snapshot` | `live` lädt zur Render-Zeit, `snapshot` verwendet eine eingefrorene Kopie |
+| `__display` | `inline`, `card` oder `full` | Visuelle Dichte der Einbettung |
+
+#### Darstellungsmodi und Template-Zuordnung
+
+| Display | Template-Modus | DOM-Element | Visuelles Ergebnis |
+| --- | --- | --- | --- |
+| `inline` | `mini` | `<span>` | Kompakter Chip oder Pill im Fließtext |
+| `card` | `preview` | `<div>` | Typspezifische Vorschaukarte als Block |
+| `full` | `full` | `<div>` | Vollständige Detailansicht im Dokument |
+
+Die Zuordnung zu Template-Modi bedeutet, dass ein eingebettetes Rezept als `card` die Rezept-Vorschaukarte mit Hero-Bild und Zutaten-Chips zeigt, während ein eingebetteter Task als `inline` nur einen kompakten Status-Chip im Fließtext rendert.
+
+```javascript
+// Lexical Node → DOM
+createDOM() {
+  const el = document.createElement(
+    this.__display === "inline" ? "span" : "div"
+  )
+  el.classList.add("brainz-embed", `brainz-embed--${this.__display}`)
+  el.dataset.uuid = this.__ref?.uuid || ""
+  return el
+}
+```
+
+#### Lazy Loading
+
+Embeds laden ihre Daten nicht sofort, sondern erst wenn sie in den sichtbaren Bereich scrollen. Ein `IntersectionObserver` mit `200px` rootMargin startet die Auflösung kurz bevor das Embed sichtbar wird. Dokumente mit vielen Einbettungen bleiben dadurch beim initialen Laden performant.
+
+#### Snapshot-Modus
+
+Im Modus `snapshot` liest das Embed aus einem vorberechneten Zustand in `BrainzEditorContext.snapshots[uuid]`. Das ist nützlich für exportierte Dokumente, Offline-Szenarien oder statische Ansichten. Falls der Snapshot nicht vorhanden ist, fällt das System automatisch auf Live-Auflösung zurück.
+
+### BrainzTransclusionNode — Editierbares Embed
+
+Transclusion geht über eine reine Vorschau hinaus. Statt den Inhalt nur darzustellen, rendert dieser Node einen verschachtelten Lexical-Editor, dessen Änderungen direkt in den Quell-Content zurückgeschrieben werden.
+
+| Eigenschaft | Typ | Bedeutung |
+| --- | --- | --- |
+| `__ref` | `{ uuid, kind }` | Referenz auf den transcludierten Inhalt |
+| `__scope` | `full`, `block` oder `field` | Wie viel vom Inhalt angezeigt wird |
+| `__writePolicy` | `owner-only`, `shared` oder `readonly` | Berechtigungsmodell für Rückschreiben |
+| `__anchor` | `string` oder `null` | Block-Anker für partielle Transclusion |
+
+Der verschachtelte Editor verwendet einen eigenen `LexicalComposer` mit eigenem Namespace. Änderungen werden mit 800ms Debounce über `ctx.saveTransclusion()` zurückgespeichert. Das Berechtigungsmodell stellt sicher, dass nur autorisierte Nutzer den Quellinhalt über die Transclusion verändern können.
+
+<Callout kind="info">
+
+Transclusion erzeugt einen bidirektionalen Zusammenhang: Ändert sich der Quellinhalt extern, aktualisiert sich die Darstellung im Dokument. Editiert der Nutzer die Transclusion, fließen Änderungen in den Quellinhalt zurück.
+
+</Callout>
+
+### BrainzWikiLinkNode — Inline-Referenz
+
+Wiki-Links folgen dem Obsidian-Muster `[[Titel]]` und erzeugen eine Inline-Referenz als nicht-editierbaren Chip. Der Cursor springt über den Chip, ohne in ihn hineinzugehen.
+
+Bei Copy-Paste wird der Wiki-Link als `[[Label]]` in Klartext exportiert. Serverseitig erfasst ein Link-Walker diese Referenzen als `link_type='wiki-link'` in `content_links`, was Backlinks und Verknüpfungsgraphen ermöglicht.
+
+### BrainzQueryBlockNode — Live-Abfrage
+
+Query-Blocks betten keine einzelnen Inhalte ein, sondern eine gespeicherte Suche. Zur Render-Zeit führt der Block eine Abfrage über `POST /api/content/query` aus und rendert die Ergebnisse als Liste, Tabelle, Karten oder Galerie.
+
+| Eigenschaft | Typ | Bedeutung |
+| --- | --- | --- |
+| `__query` | `object` | Query-DSL-Objekt mit Filtern, Sortierung und Limit |
+| `__display` | `list`, `table`, `cards` oder `gallery` | Darstellungslayout für die Ergebnisse |
+| `__title` | `string` oder `null` | Optionaler Titel über der Ergebnisliste |
+
+Damit lassen sich dynamische Inhaltsverzeichnisse, Aufgabenlisten oder Sammlungsansichten direkt in Dokumenten einbetten, die sich automatisch aktualisieren.
+
+### Smart Embed Picker
+
+Die Einfüge-UI für Einbettungen ist ein kontextsensitiver Picker mit mehreren Intelligenzschichten.
+
+<Steps>
+<Step title="Picker öffnen" icon="search">
+
+Der Nutzer öffnet den Picker über das Slash-Menü oder eine Tastenkombination. Bei leerem Suchfeld zeigt der Picker sofort KI-basierte Vorschläge.
+
+</Step>
+
+<Step title="KI-Vorschläge berechnen" icon="brain">
+
+`POST /api/editor/suggest-embeds` analysiert den Dokumentkontext und den umgebenden Blocktext. Daraus werden relevante Inhalte vorgeschlagen, die zum aktuellen Kontext passen.
+
+</Step>
+
+<Step title="Co-Occurrence und Recents" icon="git-branch">
+
+Zusätzlich zu KI-Vorschlägen zeigt der Picker häufig gemeinsam eingebettete Inhalte (Co-Occurrence Companions) und kürzlich verwendete Einbettungen aus IndexedDB.
+
+</Step>
+
+<Step title="Suche und Facetten" icon="filter">
+
+Bei Texteingabe startet eine Volltextsuche. Dynamische Facetten-Chips ermöglichen die Eingrenzung nach Typ, Tag oder Quelle.
+
+</Step>
+
+<Step title="Modus wählen und einfügen" icon="plus-circle">
+
+Der Nutzer wählt den Darstellungsmodus per Tastenkombination und fügt das Embed ein.
+
+</Step>
+</Steps>
+
+#### Einfüge-Shortcuts
+
+| Tastenkombination | Ergebnis |
+| --- | --- |
+| `Enter` | Card-Embed (Vorschaukarte als Block) |
+| `Shift+Enter` | Inline-Embed (Chip im Fließtext) |
+| `Alt+Enter` | Full-Embed (erweiterte Detailansicht) |
+| `Cmd/Ctrl+Enter` | Transclusion (editierbarer Sub-Editor) |
+
+### Backlinks und Verknüpfungen
+
+Einbettungen erzeugen automatisch Beziehungen im Content-Graphen. Beim Speichern eines Dokuments durchläuft ein Link-Walker den Lexical-State, extrahiert alle Embed-UUIDs und reconciled sie in `app_public.content_links`.
+
+Dadurch erscheint der einbettende Inhalt automatisch im „Erwähnt in"-Panel des eingebetteten Inhalts. Ein separater manueller Verlinkungsschritt ist nicht nötig.
+
+<Callout kind="tip">
+
+Embeds, Transclusions, Wiki-Links und Query-Blocks erzeugen alle eigene Einträge in `content_links`. Das Backlink-System unterscheidet nicht zwischen den Referenzarten — jede Einbettung stärkt die Verknüpfung zwischen den beteiligten Inhalten.
+
+</Callout>
+
+### Template-Integration
+
+Die Brücke zwischen Editor-Embeds und dem Template-System verläuft über die `BrainzEmbedView`-Komponente. Nach der Auflösung des referenzierten Inhalts wird dessen `content_type` ermittelt und an `BrainzRenderers.resolveTemplate(contentType)` übergeben.
+
+Das bedeutet: Jeder Content-Typ, der ein registriertes Template hat, wird automatisch in seiner typspezifischen Darstellung angezeigt — ein eingebettetes Rezept als Rezeptkarte, ein eingebetteter Film als Poster-Card mit Metadaten, ein eingebetteter Kontakt als Avatar-Chip.
+
+Für Typen ohne eigenes Template greift `__fallback.tpl.js` und rendert eine generische Karte mit Icon, Farbe und Label aus der Registry.
+
 ## Subtype Accents
 
 Einige Typen verwenden zusätzliche Farbvarianten, um Unterkategorien schneller erkennbar zu machen. Diese Akzente ergänzen die Grundfarbe des Typs und ersetzen sie nicht vollständig.
