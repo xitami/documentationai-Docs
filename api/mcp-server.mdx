@@ -1,0 +1,343 @@
+---
+title: MCP Server
+description: Model Context Protocol Server mit 47 Tools, 3 Resources und 2 Prompts für KI-Integration
+---
+
+## Überblick
+
+MCP, das Model Context Protocol, gibt KI-Assistenten direkten Zugriff auf die Brainz-Wissensbasis. Der Brainz MCP-Server in Version 3.0.0 stellt 47 Tools, 3 Resources und 2 Prompts bereit, mit denen LLMs Inhalte suchen, erstellen, verknüpfen und analysieren können, ohne dass Sie eigene API-Aufrufe verdrahten müssen.
+
+Der Server unterstützt lokale Nutzung über `stdio` und Remote-Anbindung über HTTP. Für lokale Clients wie Claude Desktop oder Claude Code ist `stdio` der Standard. Für gehostete Integrationen ist Streamable HTTP über `POST /mcp` der empfohlene Transport.
+
+## Transport-Modi
+
+Wählen Sie den Transport danach aus, wo Ihr MCP-Client läuft. Lokal ist `stdio` am einfachsten, remote ist HTTP der bevorzugte Weg.
+
+<Tabs>
+  <Tab title="stdio (Standard)" icon="terminal">
+
+  Für lokale Nutzung mit Claude Desktop oder Claude Code verwendet Brainz Kommunikation über `stdin` und `stdout`.
+
+  - Für lokale Nutzung mit Claude Desktop und Claude Code
+  - Kommunikation über `stdin` und `stdout`
+  - Start mit `node server/mcp.mjs` oder `npm run mcp`
+  - Empfohlen für Einzelplatz-Nutzung
+
+  ```bash
+  node server/mcp.mjs
+  ```
+
+  </Tab>
+  <Tab title="HTTP (Empfohlen für Remote)" icon="cloud">
+
+  Für entfernte MCP-Clients stellt Brainz Streamable HTTP über einen einzigen Endpoint bereit.
+
+  - Einheitlicher Endpoint: `POST /mcp`
+  - Session-Management über den Header `Mcp-Session-Id`
+  - Standard-Port: `3001`, konfigurierbar über `MCP_PORT`
+  - Sessions mit `DELETE /mcp` schließen
+  - Health-Check über `GET /health`
+
+  Wenn Brainz als Hauptanwendung läuft, ist MCP HTTP auf dem App-Port unter `/mcp` verfügbar.
+
+  </Tab>
+  <Tab title="SSE (Legacy)" icon="arrow-right">
+
+  SSE bleibt für ältere MCP-Clients verfügbar, wird aber durch den HTTP-Transport ersetzt.
+
+  - Server-Sent Events für ältere MCP-Clients
+  - Verbindungsaufbau über `GET /sse`
+  - Nachrichten über `POST /messages?sessionId=...`
+  - Nur für Legacy-Integrationen sinnvoll
+
+  </Tab>
+</Tabs>
+
+## Tools (47)
+
+Die Tools sind nach Aufgabenbereichen gruppiert. Alle datenbezogenen Aufrufe laufen im authentifizierten Benutzerkontext.
+
+### Authentifizierung (3)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `login` | E-Mail/Passwort-Anmeldung und Setzen des Session-Kontexts für nachfolgende Aufrufe |
+| `register` | Erstellt einen neuen Account oder meldet bei vorhandener E-Mail automatisch an |
+| `whoami` | Gibt Informationen zum aktuell authentifizierten Benutzer zurück |
+
+### Content-Verwaltung (10)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `save_content` | Smart Saver, der automatisch zwischen Item, Document und File wählt |
+| `create_item` | Erstellt ein neues Item mit Titel und Body für Notizen, Tasks oder Memos |
+| `create_document` | Erstellt ein neues Dokument mit flexiblem JSONB-Datenfeld |
+| `update_item` | Aktualisiert ein bestehendes Item |
+| `update_document` | Aktualisiert ein bestehendes Dokument |
+| `patch_document` | Teilaktualisierung per shallow merge, deep path oder Array-Operationen |
+| `delete_content` | Universelles Löschen mit automatischer Typ-Erkennung |
+| `delete_item` | Legacy-Löschung für Items |
+| `delete_document` | Legacy-Löschung für Dokumente |
+| `delete_file` | Legacy-Löschung für Dateien |
+
+### Suche (1)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `query_content` | Universalsuche mit Full-Text-Suche, JSON-Filtern, Typ-Filter und Operatoren wie `$gt`, `$lt`, `$exists`, `$in` und `$ne` |
+
+### Dateien (7)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `upload_file` | Upload von lokaler Datei oder Base64-Daten |
+| `update_file` | Aktualisiert Dateimetadaten oder den Dateiinhalt |
+| `list_files` | Listet alle Dateien im System auf |
+| `upload_text_file` | Spezialisierter Upload für Textinhalte |
+| `upload_base64_file` | Spezialisierter Upload für binäre Base64-Dateien |
+| `get_file_content` | Ruft Datei, Metadaten und Inhalt ab |
+| `download_file` | Speichert eine Datei lokal, beschränkt auf `/tmp/` |
+
+### Verknüpfungen (3)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `attach_entities` | Erstellt bidirektionale Verknüpfungen zwischen beliebigen Entitäten |
+| `detach_entities` | Entfernt eine bestehende Verknüpfung |
+| `list_attachments` | Listet verknüpfte Entitäten auf |
+
+### Veröffentlichung (4)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `publish_content` | Veröffentlicht ein Item, Dokument oder File |
+| `unpublish_content` | Setzt veröffentlichten Inhalt zurück auf Entwurf |
+| `set_content_status` | Steuert den Workflow `draft` nach `review` nach `published` nach `archived` sowie Rücksprünge |
+| `set_content_public` | Schaltet öffentliche Sichtbarkeit um |
+
+### KI-Funktionen (4)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `ai_summarize` | Erzeugt KI-Zusammenfassung und Tags für eine Entität |
+| `ai_bulk_summarize` | Batch-Verarbeitung für bis zu 50 Einträge ohne Zusammenfassung |
+| `get_clusters` | Liefert embedding-basierte Content-Cluster |
+| `ai_label_cluster` | Generiert kurze KI-Labels für Cluster |
+
+### Collections (6)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `list_collections` | Listet Smart Collections mit Regeln und Metadaten auf |
+| `create_collection` | Erstellt eine Smart Collection mit regelbasierten Filtern |
+| `update_collection` | Aktualisiert eine bestehende Collection |
+| `delete_collection` | Löscht eine Collection |
+| `get_collection_items` | Evaluiert Regeln und liefert passende Inhalte |
+| `preview_collection_rules` | Zeigt eine Vorschau passender Inhalte ohne Speichern |
+
+### Weitere Tools
+
+Diese Gruppen ergänzen die Kernfunktionen für Content und Suche.
+
+#### Benutzerverwaltung (7)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `update_profile` | Aktualisiert Profilangaben des aktuellen Benutzers |
+| `change_password` | Ändert das Passwort des aktuellen Benutzers |
+| `list_users` | Listet Benutzer im Workspace auf, nur für Admins |
+| `update_user_role` | Ändert Benutzerrollen, nur für Admins |
+| `admin_reset_password` | Setzt Benutzerpasswörter zurück, nur für Admins |
+| `admin_delete_user` | Löscht einen Benutzer und alle zugehörigen Daten, nur für Admins |
+| `delete_account` | Löscht das eigene Konto nach Passwortbestätigung |
+
+#### Notizen (3)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `add_note` | Fügt einer Entität eine Notiz oder Annotation hinzu |
+| `list_notes` | Listet Notizen einer Entität auf |
+| `delete_note` | Löscht eine Notiz |
+
+#### Cache (2)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `cache_set` | Speichert JSON-Werte mit TTL im PostgreSQL-Cache |
+| `cache_get` | Liest einen Cache-Wert aus oder gibt `null` zurück, wenn er abgelaufen ist |
+
+#### System und Übersicht (2)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `execute_sql` | Führt SQL im RLS-Kontext des authentifizierten Benutzers aus |
+| `get_dashboard_stats` | Liefert Kennzahlen zu Inhalten, Speicher und Aktivität |
+
+#### Medien (3)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `get_media_list` | Gibt die persönliche Medienbibliothek zurück |
+| `update_media_status` | Aktualisiert Status, Fortschritt oder Bewertung |
+| `search_media` | Durchsucht die Medienbibliothek |
+
+#### Prediction (1)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `predict_next_content` | Prognostiziert den wahrscheinlich relevantesten nächsten Inhalt |
+
+#### Entitäten und UUID (4)
+
+| Tool | Beschreibung |
+| --- | --- |
+| `get_entity_detail` | Gibt vollständige Details zu einer Entität inklusive Verknüpfungen zurück |
+| `resolve_entity` | Löst eine UUID in Typ, ID und Status auf |
+| `get_entity_uuid` | Ermittelt die UUID einer Entität und liefert einen Deeplink |
+| `generate_share_link` | Erzeugt einen teilbaren UUID-basierten Link |
+
+## Resources (3)
+
+Resources geben einem MCP-Client strukturierte Hintergrundinformationen über das Brainz-System. Sie eignen sich besonders für Agenten, die Schema- oder Auth-Wissen vor einem Tool-Aufruf laden sollen.
+
+| Resource | URI | Inhalt |
+| --- | --- | --- |
+| `tables` | `schema://tables` | Tabellendefinitionen mit Spalten, Typen, Indizes und RLS-Policies |
+| `functions` | `schema://functions` | Alle SQL-Funktionen mit Signaturen |
+| `auth-system` | `schema://auth` | Auth-System mit Rollen, JWT und dem Zusammenspiel mit RLS |
+
+## Prompts (2)
+
+Prompts liefern wiederverwendbare Arbeitsanweisungen für MCP-fähige Clients.
+
+| Prompt | Beschreibung |
+| --- | --- |
+| `bootstrap_data` | Generiert realistische Beispieldaten für einen Content-Typ. Argumente: `content_type` erforderlich, `count` optional mit Standardwert `5` |
+| `analyze_content` | Analysiert bestehende Inhalte nach Typen, Mustern, Feldern und Verteilung |
+
+## Authentifizierung
+
+Der MCP-Server kann auf drei Arten einen Benutzerkontext setzen. Welche Methode sinnvoll ist, hängt davon ab, ob Sie lokal, automatisiert oder über HTTP arbeiten.
+
+- **`MCP_USER_ID`** — Direkt-Authentifizierung ohne Login, sinnvoll für automatisierte Setups
+- **`BRAINZ_USER` und `BRAINZ_PASS`** — Auto-Login beim Start, vor allem für `stdio`
+- **`login`** — manueller Login als erster Tool-Aufruf
+
+Für HTTP-Transporte können Sie zusätzlich einen Server-Token absichern. Setzen Sie dafür `MCP_AUTH_TOKEN` auf dem Server und senden Sie im Client einen `Authorization`-Header mit Bearer-Token.
+
+<Callout kind="info">
+
+Alle Datenbankzugriffe laufen unter Row Level Security. Der MCP-Server sieht nur die Daten des authentifizierten Benutzers, weil alle Abfragen über den RLS-Kontext ausgeführt werden.
+
+</Callout>
+
+## Claude Desktop Konfiguration
+
+Mit `stdio` binden Sie Brainz direkt in Claude Desktop ein. Der häufigste Aufbau verwendet `node` als Command und übergibt Datenbank- und Login-Umgebungsvariablen in der Konfiguration.
+
+<Steps>
+  <Step title="Config-Datei öffnen" icon="edit">
+
+  Öffnen Sie die Claude-Desktop-Konfigurationsdatei. Auf macOS liegt sie unter `~/Library/Application Support/Claude/claude_desktop_config.json`.
+
+  </Step>
+  <Step title="Brainz-Server eintragen" icon="code">
+
+  Tragen Sie den Brainz MCP-Server in `mcpServers` ein.
+
+  ```json
+  {
+    "mcpServers": {
+      "brainz": {
+        "command": "node",
+        "args": ["/path/to/brainz/server/mcp.mjs"],
+        "env": {
+          "DATABASE_URL": "postgres://user:password@localhost:5432/brainz",
+          "BRAINZ_USER": "your@email.com",
+          "BRAINZ_PASS": "your-password"
+        }
+      }
+    }
+  }
+  ```
+
+  Wenn Claude Desktop die Konfiguration akzeptiert, erscheint der Server nach dem Neustart in der MCP-Liste des Clients.
+
+  </Step>
+  <Step title="Claude Desktop neu starten" icon="play-circle">
+
+  Starten Sie Claude Desktop vollständig neu, damit die MCP-Konfiguration neu geladen wird.
+
+  </Step>
+  <Step title="Verbindung testen" icon="check-circle">
+
+  Testen Sie die Verbindung mit einer einfachen inhaltlichen Frage, zum Beispiel: `Was sind meine letzten Inhalte?`
+
+  Wenn die Verbindung funktioniert, kann Claude Brainz-Tools aufrufen und auf Ihre Inhalte zugreifen.
+
+  </Step>
+</Steps>
+
+Für einen gehosteten Server reicht in der Regel eine URL-basierte Konfiguration aus.
+
+```json
+{
+  "mcpServers": {
+    "brainz": {
+      "url": "https://your-domain.com/mcp"
+    }
+  }
+}
+```
+
+## Konfiguration
+
+Die wichtigsten Umgebungsvariabablen steuern Transport, Authentifizierung und URL-Verhalten des MCP-Servers.
+
+<ParamField body="MCP_TRANSPORT" param-type="string" required="false" show-location="false">
+
+Transport-Modus. Gültige Werte sind `stdio`, `sse` und `http`. Standard ist `stdio`.
+
+</ParamField>
+
+<ParamField body="MCP_PORT" param-type="integer" required="false" show-location="false">
+
+Port für SSE- und HTTP-Transporte. Standard ist `3001`.
+
+</ParamField>
+
+<ParamField body="MCP_USER_ID" param-type="integer" required="false" show-location="false">
+
+Setzt den Benutzerkontext direkt, ohne vorherigen Login-Aufruf.
+
+</ParamField>
+
+<ParamField body="MCP_AUTH_TOKEN" param-type="string" required="false" show-location="false">
+
+Bearer-Token für HTTP-Authentifizierung. Wenn gesetzt, muss der Client einen passenden `Authorization`-Header mitsenden.
+
+</ParamField>
+
+<ParamField body="BRAINZ_USER" param-type="string" required="false" show-location="false">
+
+E-Mail-Adresse für Auto-Login beim Start des MCP-Servers.
+
+</ParamField>
+
+<ParamField body="BRAINZ_PASS" param-type="string" required="false" show-location="false">
+
+Passwort für Auto-Login beim Start des MCP-Servers.
+
+</ParamField>
+
+<ParamField body="DATABASE_URL" param-type="string" required="true" show-location="false">
+
+PostgreSQL-Verbindungszeichenfolge für Brainz.
+
+</ParamField>
+
+<ParamField body="BASE_URL" param-type="string" required="false" show-location="false">
+
+Öffentliche Basis-URL für generierte Links. Standard ist `http://localhost:3000`.
+
+</ParamField>

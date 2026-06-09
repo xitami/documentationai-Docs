@@ -1,0 +1,485 @@
+---
+title: GraphQL API
+description: Automatisch generierte GraphQL-API via PostGraphile mit Echtzeit-Subscriptions und Hybrid-Suche
+---
+
+## Überblick
+
+Brainz stellt eine automatisch generierte GraphQL-API auf Basis von PostGraphile 4.14 bereit. PostGraphile introspektiert das Schema `app_public` und erzeugt daraus das vollständige API-Schema, ohne dass Sie ein separates GraphQL-Schema oder Standard-Resolver manuell schreiben müssen.
+
+Änderungen an Tabellen, Views und freigegebenen SQL-Funktionen propagieren direkt in die API. Standard-CRUD-Operationen entstehen aus dem Datenbankschema, während anwendungsspezifische Endpunkte als benutzerdefinierte SQL-Funktionen exponiert werden. Die Integration verwendet Vanilla PostGraphile ohne Drittanbieter-Plugins.
+
+<Callout kind="info">
+
+Die GraphQL-Oberfläche basiert vollständig auf Built-in-CRUD und Custom SQL Functions. Das reduziert Schema-Drift zwischen Datenbank und API, weil die Datenbank die primäre Quelle bleibt.
+
+</Callout>
+
+## Zugriff
+
+Die API ist unter einem festen Endpoint erreichbar. Der Entwicklungs-Playground wird nur außerhalb von Production bereitgestellt.
+
+<ParamField body="GraphQL Endpoint" param-type="string" show-location="false">
+
+`/graphql` ist immer aktiv und verarbeitet Queries und Mutations.
+
+</ParamField>
+
+<ParamField body="GraphiQL Playground" param-type="string" show-location="false">
+
+`/graphiql` ist nur in der Entwicklungsumgebung verfügbar.
+
+</ParamField>
+
+<Callout kind="info">
+
+Introspection ist in Production deaktiviert. Nutzen Sie den GraphiQL Playground in der Entwicklungsumgebung.
+
+</Callout>
+
+## Authentifizierung
+
+Authentifizierte Requests senden ein JWT im `Authorization`-Header. Ohne Token wird der Datenbankkontext mit der Rolle `app_anonymous` ausgeführt, mit gültigem Token mit `app_user`.
+
+<Callout kind="alert">
+
+Details zu Login, Token-Erzeugung und Auth-Flows finden Sie unter [Authentifizierung](/authentication).
+
+</Callout>
+
+```http
+Authorization: Bearer <jwt-token>
+```
+
+PostGraphile mappt JWT-Claims in Datenbank-Session-Settings. Dabei werden insbesondere `role`, `jwt.claims.user_id`, `jwt.claims.tenant_id` und `jwt.claims.role` gesetzt. Diese Werte steuern Rollen, Tenant-Isolation und Row-Level Security direkt in PostgreSQL.
+
+<Request tabs="cURL,JavaScript" default-tab="1">
+```bash
+curl -X POST https://api.brainz.local/graphql \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.brainz" \
+  -d '{
+    "query": "query { me { id email } }"
+  }'
+```
+
+```javascript
+const response = await fetch("https://api.brainz.local/graphql", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.brainz"
+  },
+  body: JSON.stringify({
+    query: "query { me { id email } }"
+  })
+});
+
+const result = await response.json();
+console.log(result);
+```
+</Request>
+
+<Response tabs="200,401" default-tab="1">
+```json
+{
+  "data": {
+    "me": {
+      "id": 42,
+      "email": "jane@brainz.io"
+    }
+  }
+}
+```
+
+```json
+{
+  "errors": [
+    {
+      "message": "invalid token",
+      "extensions": {
+        "code": "401"
+      }
+    }
+  ]
+}
+```
+</Response>
+
+## Queries
+
+PostGraphile generiert Queries für Tabellen, Views und freigegebene SQL-Funktionen im Schema `app_public`. Für Integrationen sind drei Muster relevant: Collection Queries, Node Queries und benutzerdefinierte Such-Queries.
+
+### Collection Queries
+
+Für jede Tabelle entstehen connection-basierte Abfragen wie `allItems`, `allDocuments` oder `allFiles`. Diese Queries unterstützen Cursor-Pagination, Sortierung, Bedingungen und `totalCount`.
+
+Typische Merkmale:
+
+- **Pagination** über `first`, `last`, `after` und `before`
+- **Sortierung** über Enum-Werte wie `CREATED_AT_DESC` oder `UPDATED_AT_DESC`
+- **Filterung** über `condition`
+- **Zählwerte** über `totalCount`
+
+```graphql
+query GetDocuments($first: Int!, $after: Cursor) {
+  allDocuments(
+    first: $first
+    after: $after
+    orderBy: UPDATED_AT_DESC
+    condition: { contentType: "article" }
+  ) {
+    totalCount
+    nodes {
+      id
+      title
+      data
+      contentType
+      status
+      createdAt
+      updatedAt
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+```
+
+### Node Queries
+
+Einzelne Datensätze lassen sich direkt per Primärschlüssel abrufen. Das Muster folgt den Tabellennamen, zum Beispiel `documentById`, `itemById` oder `fileById`.
+
+```graphql
+query GetDocument($id: UUID!) {
+  documentById(id: $id) {
+    id
+    title
+    contentType
+    status
+    updatedAt
+  }
+}
+```
+
+### Custom Search Queries
+
+Anwendungsspezifische SQL-Funktionen erscheinen ebenfalls als GraphQL-Queries. Diese Funktionen bilden Such- und Kontextoperationen ab, die über Standard-CRUD hinausgehen.
+
+<ParamField body="hybridSearch" param-type="query" show-location="false">
+
+Vereinheitlichte Suche über Full-Text, semantische Suche und fuzzy matching.
+
+</ParamField>
+
+<ParamField body="searchContent" param-type="query" show-location="false">
+
+Inhaltssuche mit Typfilter.
+
+</ParamField>
+
+<ParamField body="queryContent" param-type="query" show-location="false">
+
+Mehrdimensionale Inhaltsabfrage über Typ, JSON-Filter und Suchbegriff.
+
+</ParamField>
+
+<ParamField body="listContentTypes" param-type="query" show-location="false">
+
+Liefert verfügbare Content-Typen inklusive Zählwerten.
+
+</ParamField>
+
+<ParamField body="me" param-type="query" show-location="false">
+
+Liefert Informationen zum aktuell authentifizierten Benutzer.
+
+</ParamField>
+
+<CodeGroup tabs="Minimal,Erweitert">
+```graphql
+query Search($query: String!, $max: Int) {
+  hybridSearch(
+    pQuery: $query
+    pMaxResults: $max
+    pMode: "hybrid"
+    pFuzzy: true
+  ) {
+    nodes {
+      id
+      title
+      sourceType
+      description
+      tags
+      ftsScore
+      vectorScore
+      finalScore
+    }
+  }
+}
+```
+
+```graphql
+query Search($query: String!, $max: Int) {
+  hybridSearch(
+    pQuery: $query
+    pMaxResults: $max
+    pSourceTypes: ["document", "item"]
+    pTags: ["knowledge-base", "product"]
+    pMode: "hybrid"
+    pFuzzy: true
+  ) {
+    nodes {
+      id
+      title
+      sourceType
+      sourceId
+      contentType
+      description
+      tags
+      ftsScore
+      vectorScore
+      fuzzyScore
+      recencyScore
+      finalScore
+      createdAt
+      updatedAt
+    }
+  }
+}
+```
+</CodeGroup>
+
+## Mutations
+
+Mutations fallen in zwei Gruppen: automatisch generierte CRUD-Mutations für Tabellen und benutzerdefinierte Mutations auf Basis von SQL-Funktionen.
+
+### Auto-generierte CRUD-Mutations
+
+Für jede schreibbare Tabelle erzeugt PostGraphile Standard-Mutations wie `createDocument`, `updateDocument`, `deleteDocument`, `createItem`, `updateItem` und `deleteItem`. Diese Mutations folgen dem PostGraphile-Eingabemodell mit `input`-Objekten und geben in der Regel den erzeugten oder aktualisierten Datensatz sowie Metadaten zurück.
+
+### Custom Mutations
+
+Benutzerdefinierte SQL-Funktionen ergänzen die Standard-Mutations um domänenspezifische Operationen.
+
+<ParamField body="register" param-type="mutation" show-location="false">
+
+`register(email, password, tenantId)` gibt ein `JwtToken` zurück.
+
+</ParamField>
+
+<ParamField body="login" param-type="mutation" show-location="false">
+
+`login(email, password)` gibt ein `JwtToken` zurück.
+
+</ParamField>
+
+<ParamField body="addItemContent" param-type="mutation" show-location="false">
+
+Erstellt Item-basierten Content.
+
+</ParamField>
+
+<ParamField body="addDocumentContent" param-type="mutation" show-location="false">
+
+Erstellt dokumentbasierten Content.
+
+</ParamField>
+
+<ParamField body="addFileContent" param-type="mutation" show-location="false">
+
+Erstellt dateibasierten Content.
+
+</ParamField>
+
+<ParamField body="updateItemContent" param-type="mutation" show-location="false">
+
+Aktualisiert Item-Content.
+
+</ParamField>
+
+<ParamField body="updateDocumentContent" param-type="mutation" show-location="false">
+
+Aktualisiert Document-Content.
+
+</ParamField>
+
+<ParamField body="setContentStatus" param-type="mutation" show-location="false">
+
+Setzt den Status eines Content-Objekts.
+
+</ParamField>
+
+<ParamField body="publishContent" param-type="mutation" show-location="false">
+
+Veröffentlicht Content und kann ihn optional öffentlich sichtbar machen.
+
+</ParamField>
+
+<ParamField body="unpublishContent" param-type="mutation" show-location="false">
+
+Hebt eine Veröffentlichung wieder auf.
+
+</ParamField>
+
+```graphql
+mutation CreateDocument($title: String!, $data: JSON!, $type: String!) {
+  addDocumentContent(
+    input: {
+      pTitle: $title
+      pData: $data
+      pContentType: $type
+    }
+  ) {
+    content {
+      id
+      title
+      contentType
+      createdAt
+    }
+  }
+}
+```
+
+## Filtern und Sortieren
+
+Collection Queries unterstützen Filter- und Sortierlogik, die direkt aus dem Datenbankschema abgeleitet wird. Dadurch entsprechen verfügbare Felder und Operatoren den tatsächlichen Spalten und Typen im Schema.
+
+### Conditions
+
+`condition`-Argumente basieren auf Spaltennamen und einfachen Gleichheitsvergleichen. Für viele Standardfälle reicht das aus, etwa `condition: { status: ACTIVE }` oder `condition: { contentType: "article" }`.
+
+### Ordering
+
+Sortierung erfolgt über Enums. Typische Werte sind `CREATED_AT_DESC`, `CREATED_AT_ASC`, `UPDATED_AT_DESC` oder `TITLE_ASC`, abhängig vom jeweiligen Typ.
+
+### Pagination
+
+Cursor-basierte Pagination ist das Standardmodell und verwendet `first` mit `after` beziehungsweise `last` mit `before`. Zusätzlich stehen offset-basierte Muster zur Verfügung, wenn der generierte Typ diese unterstützt.
+
+<Callout kind="info">
+
+In Production sind Filter-Operatoren zur DoS-Härtung eingeschränkt. Verfügbar sind `equalTo`, `notEqualTo`, `in`, `notIn`, `contains` und `startsWith`.
+
+</Callout>
+
+## Sicherheit und Limits
+
+Die Production-Konfiguration begrenzt Anfragen auf mehreren Ebenen. Diese Limits schützen die Datenbank vor zu tiefen, zu großen oder zu vielen GraphQL-Operationen.
+
+| Schutz | Wert |
+| --- | --- |
+| Rate Limiting | 120 Requests/Minute |
+| Query-Tiefe | Max 8 Ebenen |
+| Token-Limit | Max 5000 Zeichen pro Query |
+| Batch-Limit | Max 5 Queries pro Batch |
+| Statement Timeout | 15 Sekunden |
+| Introspection | Deaktiviert in Production |
+
+<Callout kind="alert">
+
+Wenn eine Query in Development funktioniert, in Production aber fehlschlägt, prüfen Sie zuerst Introspection, Query-Tiefe, Batch-Größe und verwendete Filter-Operatoren.
+
+</Callout>
+
+## Fehlerbehandlung
+
+Brainz liefert GraphQL-Fehler im Standardformat über das Feld `errors`. Datenbankfehler, Policy-Verletzungen und Validierungsprobleme werden dabei in GraphQL-kompatible Antworten übersetzt.
+
+Häufige Fehlertypen:
+
+- **401** — Kein Token oder ungültiges Token
+- **403** — Row-Level Security oder Tenant-Isolation verweigert den Zugriff
+- **Validation Errors** — Constraint-Verletzungen und andere PostgreSQL-Fehler
+
+<Response tabs="403" default-tab="1">
+```json
+{
+  "errors": [
+    {
+      "message": "permission denied for table documents",
+      "extensions": {
+        "code": "42501"
+      }
+    }
+  ]
+}
+```
+</Response>
+
+### Typische Ursachen
+
+<ExpandableGroup>
+<Expandable title="401 bei einer Query oder Mutation">
+
+Prüfen Sie, ob der `Authorization`-Header ein gültiges Bearer-Token enthält. Ohne gültiges JWT läuft die Anfrage unter `app_anonymous`, wodurch geschützte Felder und Mutations fehlschlagen können.
+
+</Expandable>
+
+<Expandable title="403 trotz gültigem Token">
+
+Ein gültiges Token reicht nicht aus, wenn Row-Level Security den Datensatz blockiert. Typische Ursachen sind ein falscher Tenant-Kontext oder fehlende Berechtigung für die betroffene Tabelle oder SQL-Funktion.
+
+</Expandable>
+
+<Expandable title="Validierungsfehler aus PostgreSQL">
+
+PostgreSQL gibt Constraint-Verletzungen direkt an GraphQL weiter. Prüfen Sie Pflichtfelder, eindeutige Schlüssel, Fremdschlüssel und Datentypen im `input`-Objekt.
+
+</Expandable>
+</ExpandableGroup>
+
+## Wichtige Query-Muster
+
+Die meisten Integrationen kombinieren eine paginierte Collection Query mit gezielten Such- oder Detailabfragen. Das folgende Muster deckt den häufigsten Ablauf ab: Liste laden, Detailansicht per ID abrufen und anschließend über `hybridSearch` durchsuchen.
+
+<CodeGroup tabs="Collection Query,Node Query,Search Query">
+```graphql
+query GetItems($first: Int!, $after: Cursor, $status: ContentStatus) {
+  allItems(first: $first, after: $after, orderBy: CREATED_AT_DESC, condition: { status: $status }) {
+    totalCount
+    nodes {
+      id
+      title
+      body
+      status
+      contentType
+      createdAt
+      updatedAt
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+```
+
+```graphql
+query GetFile($id: UUID!) {
+  fileById(id: $id) {
+    id
+    filename
+    mimeType
+    sizeBytes
+    status
+    uploadedAt
+  }
+}
+```
+
+```graphql
+query QuickSearch($q: String!, $max: Int) {
+  hybridSearch(pQuery: $q, pMaxResults: $max, pMode: "text") {
+    nodes {
+      id
+      sourceId
+      sourceType
+      title
+      description
+    }
+  }
+}
+```
+</CodeGroup>

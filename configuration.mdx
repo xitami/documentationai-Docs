@@ -1,0 +1,432 @@
+---
+title: Konfiguration
+description: Alle Umgebungsvariablen, Datenbank-Setup und Service-Konfiguration für Brainz
+---
+
+## Überblick
+
+Brainz wird vollständig über Umgebungsvariablen konfiguriert. Separate Konfigurationsdateien sind nicht erforderlich.
+
+Kopieren Sie `.env.example` nach `.env` und passen Sie die Werte an Ihre Umgebung an. Für Container-Deployments können Sie dieselben Variablen direkt an Docker Compose, Kubernetes Secrets oder Ihre Hosting-Plattform übergeben.
+
+```bash
+cp .env.example .env
+```
+
+## Basis-Konfiguration
+
+Diese Variablen benötigt jede Brainz-Installation, unabhängig davon, ob Sie lokal entwickeln oder in Produktion deployen.
+
+<ParamField body="DATABASE_URL" param-type="string" required="true" show-location="false">
+
+PostgreSQL-Connection-String. Verwenden Sie das Format `postgres://user:password@host:5432/brainz`.
+
+</ParamField>
+
+<ParamField body="REDIS_URL" param-type="string" required="true" show-location="false">
+
+Redis-Connection-String. Verwenden Sie in der Regel das Format `redis://localhost:6379`.
+
+</ParamField>
+
+<ParamField body="JWT_SECRET" param-type="string" required="true" show-location="false">
+
+Geheimschlüssel für die JWT-Signierung. Der Wert muss mindestens 32 Zeichen lang sein.
+
+</ParamField>
+
+<ParamField body="PORT" param-type="integer" required="false" show-location="false">
+
+HTTP-Port des Brainz-Servers. Standardwert ist `3000`.
+
+</ParamField>
+
+<ParamField body="NODE_ENV" param-type="string" required="false" show-location="false" enum="production,development">
+
+Laufzeitumgebung der Anwendung. Übliche Werte sind `production` oder `development`.
+
+</ParamField>
+
+<ParamField body="APP_URL" param-type="string" required="false" show-location="false">
+
+Öffentliche URL der Anwendung. Brainz verwendet diesen Wert für Callbacks, generierte Links und externe Weiterleitungen.
+
+</ParamField>
+
+<Callout kind="alert">
+
+`JWT_SECRET` muss mindestens 32 Zeichen lang sein und sollte kryptographisch sicher erzeugt werden. Committen Sie Secrets niemals in öffentliche Repositories und legen Sie sie nicht direkt im Image ab.
+
+</Callout>
+
+## Datenbank
+
+Brainz setzt PostgreSQL als Primärdatenbank ein. Verwenden Sie PostgreSQL 16 oder neuer, damit alle Abfragen, Migrationen und Erweiterungen unterstützt werden.
+
+Die Anwendung erwartet eine Datenbank, in der die benötigten Extensions verfügbar sind. Wenn der Datenbankbenutzer ausreichende Rechte hat, installieren die Migrationen `pgvector`, `pgcrypto` und `uuid-ossp` automatisch. `pg_cron` ist optional und wird für geplante Jobs empfohlen, ist aber nicht zwingend erforderlich.
+
+Die Datenbankobjekte sind in mehrere Schemata getrennt:
+
+- **`app_public`** für API-sichtbare Daten
+- **`app_private`** für interne Daten
+- **`app_hidden`** für temporäre oder interne Hilfsstrukturen
+
+Für Verbindungen verwendet Brainz Standard-Pooling über `pg` und dessen Connection-Pool. Eine zusätzliche Pool-Konfiguration ist über die dokumentierten Umgebungsvariablen nicht erforderlich.
+
+### Docker-Variablen für PostgreSQL
+
+Wenn Sie Brainz mit Docker Compose betreiben, setzen Sie zusätzlich diese Variablen für den PostgreSQL-Container.
+
+<ParamField body="POSTGRES_DB" param-type="string" required="false" show-location="false">
+
+Name der Datenbank, die beim Start des Containers angelegt wird.
+
+</ParamField>
+
+<ParamField body="POSTGRES_USER" param-type="string" required="false" show-location="false">
+
+Benutzername für den PostgreSQL-Container.
+
+</ParamField>
+
+<ParamField body="POSTGRES_PASSWORD" param-type="string" required="false" show-location="false">
+
+Passwort für den PostgreSQL-Benutzer im Container.
+
+</ParamField>
+
+## Authentifizierung
+
+Brainz unterstützt lokale Authentifizierung und OAuth-Provider. Für Session-Management wird ein separates Secret verwendet.
+
+<ParamField body="BETTER_AUTH_SECRET" param-type="string" required="true" show-location="false">
+
+Secret für Better Auth und das Session-Management.
+
+</ParamField>
+
+<ParamField body="GOOGLE_CLIENT_ID" param-type="string" required="false" show-location="false">
+
+OAuth-Client-ID für die Anmeldung über Google.
+
+</ParamField>
+
+<ParamField body="GOOGLE_CLIENT_SECRET" param-type="string" required="false" show-location="false">
+
+OAuth-Client-Secret für die Anmeldung über Google.
+
+</ParamField>
+
+<ParamField body="GITHUB_CLIENT_ID" param-type="string" required="false" show-location="false">
+
+OAuth-Client-ID für die Anmeldung über GitHub.
+
+</ParamField>
+
+<ParamField body="GITHUB_CLIENT_SECRET" param-type="string" required="false" show-location="false">
+
+OAuth-Client-Secret für die Anmeldung über GitHub.
+
+</ParamField>
+
+<Callout kind="info">
+
+TOTP-basierte Zwei-Faktor-Authentifizierung benötigt keine zusätzliche Umgebungsvariable. Die Funktion ist standardmäßig verfügbar.
+
+</Callout>
+
+## Storage (S3)
+
+Dateien und Medien werden über einen S3-kompatiblen Storage-Backend angebunden. Standardmäßig verwendet Brainz `s3` als Backend-Typ.
+
+<ParamField body="S3_ENDPOINT" param-type="string" required="true" show-location="false">
+
+Endpoint-URL des S3-kompatiblen Storage-Providers.
+
+</ParamField>
+
+<ParamField body="S3_BUCKET" param-type="string" required="true" show-location="false">
+
+Name des Buckets für Uploads und abgeleitete Dateien.
+
+</ParamField>
+
+<ParamField body="S3_ACCESS_KEY_ID" param-type="string" required="true" show-location="false">
+
+Access Key für den Zugriff auf den Bucket.
+
+</ParamField>
+
+<ParamField body="S3_SECRET_ACCESS_KEY" param-type="string" required="true" show-location="false">
+
+Secret Key für den Zugriff auf den Bucket.
+
+</ParamField>
+
+<ParamField body="S3_REGION" param-type="string" required="false" show-location="false">
+
+Region des Buckets. Wenn kein Wert gesetzt ist, wird typischerweise `auto` verwendet.
+
+</ParamField>
+
+<ParamField body="STORAGE_BACKEND" param-type="string" required="false" show-location="false">
+
+Typ des Storage-Backends. Standardwert ist `s3`.
+
+</ParamField>
+
+<Callout kind="tip">
+
+Brainz ist mit AWS S3, MinIO, Cloudflare R2 und Backblaze B2 kompatibel. Für die lokale Entwicklung startet Docker Compose MinIO in der Regel automatisch.
+
+</Callout>
+
+## KI-Provider
+
+KI-Funktionen sind optional. Sobald Sie einen kompatiblen Endpoint und einen gültigen Schlüssel konfigurieren, kann Brainz Modelle für Chat, Vision und Speech-to-Text verwenden.
+
+<Tabs>
+  <Tab title="OpenAI (Standard)" icon="code">
+
+  Diese Konfiguration verwendet einen OpenAI-kompatiblen Endpoint, häufig über Cloudflare AI Gateway.
+
+  <ParamField body="AI_BASE_URL" param-type="string" required="true" show-location="false">
+
+  Basis-URL des KI-Providers. Verwenden Sie eine Cloudflare-AI-Gateway-URL oder einen anderen OpenAI-kompatiblen Endpoint.
+
+  </ParamField>
+
+  <ParamField body="CF_AIG_TOKEN" param-type="string" required="false" show-location="false">
+
+  API-Token für Cloudflare AI Gateway. Setzen Sie diesen Wert, wenn Ihr Traffic über Cloudflare geroutet wird.
+
+  </ParamField>
+
+  <ParamField body="AI_API_KEY" param-type="string" required="false" show-location="false">
+
+  Alternativer API-Schlüssel für OpenAI-kompatible Provider. Verwenden Sie entweder `CF_AIG_TOKEN` oder `AI_API_KEY`, abhängig von Ihrem Setup.
+
+  </ParamField>
+
+  <ParamField body="AI_ASSISTANT_MODEL" param-type="string" required="false" show-location="false">
+
+  Modell-ID für Chat- und Assistenz-Aufgaben. Standardwert ist `openai/gpt-5-mini`.
+
+  </ParamField>
+
+  <ParamField body="AI_VISION_MODEL" param-type="string" required="false" show-location="false">
+
+  Modell-ID für Bildanalyse. Standardwert ist `openai/gpt-4.1-mini`.
+
+  </ParamField>
+
+  <ParamField body="AI_STT_MODEL" param-type="string" required="false" show-location="false">
+
+  Modell-ID für Speech-to-Text. Standardwert ist `openai/whisper-1`.
+
+  </ParamField>
+
+  </Tab>
+  <Tab title="Anthropic" icon="settings">
+
+  Anthropic kann über denselben `AI_BASE_URL`-Mechanismus angebunden werden, wenn der Zugriff über Cloudflare AI Gateway oder einen kompatiblen Proxy erfolgt.
+
+  Verwenden Sie Modell-IDs im Format `anthropic/claude-sonnet-4`. Für task-spezifisches Routing erfolgt die Feinkonfiguration über die Tabelle `ai_service_registry`.
+
+  </Tab>
+  <Tab title="Ollama (Lokal)" icon="monitor">
+
+  Für lokale Modelle setzen Sie `AI_BASE_URL` auf `http://localhost:11434/v1` und verwenden eine Modell-ID wie `ollama/llama3`.
+
+  <ParamField body="AI_BASE_URL" param-type="string" required="true" show-location="false">
+
+  Lokaler Ollama-Endpoint, typischerweise `http://localhost:11434/v1`.
+
+  </ParamField>
+
+  <ParamField body="AI_ASSISTANT_MODEL" param-type="string" required="false" show-location="false">
+
+  Lokale Modell-ID, zum Beispiel `ollama/llama3`.
+
+  </ParamField>
+
+  <Callout kind="tip">
+
+  Bei einem lokalen Ollama-Setup verlassen Modellanfragen Ihr lokales Netzwerk nicht.
+
+  </Callout>
+
+  </Tab>
+</Tabs>
+
+## E-Mail
+
+Für ausgehende E-Mails unterstützt Brainz klassisches SMTP. Alternativ können SendGrid, Postmark und AWS SES als Mail-Provider verwendet werden.
+
+<ParamField body="SMTP_HOST" param-type="string" required="false" show-location="false">
+
+Hostname des SMTP-Servers.
+
+</ParamField>
+
+<ParamField body="SMTP_PORT" param-type="integer" required="false" show-location="false">
+
+Port des SMTP-Servers. Typischer Standardwert ist `587`.
+
+</ParamField>
+
+<ParamField body="SMTP_USER" param-type="string" required="false" show-location="false">
+
+Benutzername für die SMTP-Authentifizierung.
+
+</ParamField>
+
+<ParamField body="SMTP_PASS" param-type="string" required="false" show-location="false">
+
+Passwort für die SMTP-Authentifizierung.
+
+</ParamField>
+
+<ParamField body="MAIL_FROM" param-type="string" required="false" show-location="false">
+
+Absenderadresse für ausgehende E-Mails.
+
+</ParamField>
+
+## Push-Benachrichtigungen
+
+Web-Push-Benachrichtigungen benötigen ein VAPID-Schlüsselpaar. Erzeugen Sie die Schlüssel vor dem ersten produktiven Einsatz mit `npx web-push generate-vapid-keys`.
+
+<ParamField body="VAPID_PUBLIC_KEY" param-type="string" required="false" show-location="false">
+
+Öffentlicher VAPID-Schlüssel für Web-Push-Abonnements.
+
+</ParamField>
+
+<ParamField body="VAPID_PRIVATE_KEY" param-type="string" required="false" show-location="false">
+
+Privater VAPID-Schlüssel zum Signieren von Push-Nachrichten.
+
+</ParamField>
+
+## MCP Server
+
+Der MCP-Server lässt sich separat aktivieren und konfigurieren. Detaillierte API- und Betriebsinformationen finden Sie unter [/api/mcp-server](/api/mcp-server).
+
+<ParamField body="MCP_TRANSPORT" param-type="string" required="false" show-location="false" enum="stdio,sse,http">
+
+Transportmodus des MCP-Servers. Standardwert ist `stdio`.
+
+</ParamField>
+
+<ParamField body="MCP_PORT" param-type="integer" required="false" show-location="false">
+
+Port des MCP-Servers. Standardwert ist `3001`.
+
+</ParamField>
+
+<ParamField body="MCP_USER_ID" param-type="string" required="false" show-location="false">
+
+Benutzerkennung für MCP-Kontexte oder fest zugeordnete Sessions.
+
+</ParamField>
+
+<ParamField body="BRAINZ_USER" param-type="string" required="false" show-location="false">
+
+Benutzername für authentifizierte MCP-Zugriffe.
+
+</ParamField>
+
+<ParamField body="BRAINZ_PASS" param-type="string" required="false" show-location="false">
+
+Passwort für authentifizierte MCP-Zugriffe.
+
+</ParamField>
+
+<ParamField body="MCP_AUTH_TOKEN" param-type="string" required="false" show-location="false">
+
+Optionales Auth-Token für den MCP-Server.
+
+</ParamField>
+
+## Medien-Enrichment
+
+Zusätzliche API-Schlüssel erweitern die automatische Anreicherung von Inhalten. Ohne diese Schlüssel bleibt Brainz funktionsfähig, einzelne Enrichment-Funktionen stehen dann jedoch nicht zur Verfügung.
+
+<ParamField body="TMDB_API_KEY" param-type="string" required="false" show-location="false">
+
+API-Schlüssel für Film- und Serien-Metadaten aus TMDB.
+
+</ParamField>
+
+<ParamField body="BRAVE_SEARCH_API_KEY" param-type="string" required="false" show-location="false">
+
+API-Schlüssel für Web-Suche und suchgestützte Anreicherung.
+
+</ParamField>
+
+<Callout kind="info">
+
+Weitere Enrichment-Dienste sind optional. Fehlen die zugehörigen Schlüssel, degradiert das System kontrolliert und überspringt nur die betroffenen Anreicherungsschritte.
+
+</Callout>
+
+## Beispiel .env
+
+Dieses Beispiel zeigt eine vollständige `.env`-Datei mit den üblichen Variablen für lokale Entwicklung oder ein erstes Deployment.
+
+```bash
+# === Basis ===
+DATABASE_URL=postgres://brainz:secret@localhost:5432/brainz
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=brainz-example-jwt-secret-32-chars-minimum-value
+PORT=3000
+NODE_ENV=production
+APP_URL=https://brainz.example.com
+
+# === Docker Compose DB ===
+POSTGRES_DB=brainz
+POSTGRES_USER=brainz
+POSTGRES_PASSWORD=secret
+
+# === Auth ===
+BETTER_AUTH_SECRET=brainz-example-auth-secret-32-chars
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+# === Storage ===
+STORAGE_BACKEND=s3
+S3_ENDPOINT=http://localhost:9000
+S3_BUCKET=brainz-uploads
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_REGION=auto
+
+# === KI ===
+AI_BASE_URL=https://gateway.ai.cloudflare.com/v1/account/gateway
+CF_AIG_TOKEN=cf_aig_example_9xmk7q2r
+AI_ASSISTANT_MODEL=openai/gpt-5-mini
+AI_VISION_MODEL=openai/gpt-4.1-mini
+AI_STT_MODEL=openai/whisper-1
+
+# === E-Mail ===
+SMTP_HOST=smtp.mail.internal
+SMTP_PORT=587
+SMTP_USER=notifications@brainz.local
+SMTP_PASS=smtp-password
+MAIL_FROM=Brainz <notifications@brainz.local>
+
+# === Push ===
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+
+# === MCP ===
+MCP_TRANSPORT=stdio
+MCP_PORT=3001
+
+# === Enrichment (optional) ===
+TMDB_API_KEY=
+BRAVE_SEARCH_API_KEY=
+```

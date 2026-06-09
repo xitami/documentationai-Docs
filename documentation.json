@@ -1,5 +1,5 @@
 {
-  "name": "Starter Kit",
+  "name": "Brainz",
   "colors": {
     "light": {
       "brand": "#F97316"
@@ -11,141 +11,88 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "Dokumentation",
         "icon": "book",
         "groups": [
           {
-            "group": "Start Here",
+            "group": "Erste Schritte",
             "icon": "rocket",
             "pages": [
               {
-                "title": "Introduction",
+                "title": "Einführung",
                 "path": "introduction",
                 "icon": "home"
               },
               {
-                "title": "Quickstart",
+                "title": "Schnellstart",
                 "path": "quickstart",
                 "icon": "zap"
               },
               {
-                "title": "Components",
-                "path": "components",
-                "icon": "code"
+                "title": "Architektur",
+                "path": "architecture",
+                "icon": "layers"
               }
             ]
           },
           {
-            "group": "Components",
-            "icon": "layers",
+            "group": "Features",
+            "icon": "sparkles",
             "pages": [
               {
-                "title": "Images",
-                "path": "components/images",
-                "icon": "image"
+                "title": "KI-Features",
+                "path": "features/ai",
+                "icon": "brain"
               },
               {
-                "title": "Cards",
-                "path": "components/cards",
-                "icon": "square"
+                "title": "Content-System",
+                "path": "features/content",
+                "icon": "database"
+              }
+            ]
+          },
+          {
+            "group": "Betrieb",
+            "icon": "server",
+            "pages": [
+              {
+                "title": "Deployment",
+                "path": "deployment",
+                "icon": "cloud"
               },
               {
-                "title": "Code",
-                "path": "components/code",
-                "icon": "code"
-              },
-              {
-                "title": "Callouts",
-                "path": "components/callouts",
-                "icon": "message-square"
-              },
-              {
-                "title": "Steps",
-                "path": "components/steps",
-                "icon": "list-ordered"
-              },
-              {
-                "title": "Tabs",
-                "path": "components/tabs",
-                "icon": "columns"
+                "title": "Konfiguration",
+                "path": "configuration",
+                "icon": "settings"
               }
             ]
           }
         ]
       },
       {
-        "tab": "API Reference",
+        "tab": "API Referenz",
         "icon": "code",
         "groups": [
           {
-            "group": "Overview",
+            "group": "Übersicht",
             "icon": "file-text",
             "pages": [
               {
-                "title": "Authentication",
+                "title": "Authentifizierung",
                 "path": "authentication",
                 "icon": "lock"
-              }
-            ]
-          },
-          {
-            "group": "Sample Endpoints",
-            "openapi": "openapi.yaml"
-          }
-        ]
-      },
-      {
-        "tab": "Help Center",
-        "icon": "help-circle",
-        "pages": [
-          {
-            "title": "Help Center",
-            "path": "help-center",
-            "icon": "home"
-          },
-          {
-            "group": "FAQs",
-            "icon": "help-circle",
-            "expandable": false,
-            "pages": [
+              },
               {
-                "title": "Documentation Source",
-                "path": "help-center/faq/getting-started"
-              }
-            ]
-          },
-          {
-            "group": "Troubleshooting",
-            "icon": "alert-triangle",
-            "expandable": false,
-            "pages": [
+                "title": "GraphQL API",
+                "path": "api/graphql",
+                "icon": "git-branch"
+              },
               {
-                "title": "Page Missing in Sidebar",
-                "path": "help-center/troubleshooting/install-error"
+                "title": "MCP Server",
+                "path": "api/mcp-server",
+                "icon": "cpu"
               }
             ]
-          },
-          {
-            "group": "Guides",
-            "icon": "book-open",
-            "expandable": false,
-            "pages": [
-              {
-                "title": "Create Your First Page",
-                "path": "help-center/guides/setup-project"
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Changelog",
-        "icon": "clock",
-        "pages": [
-          {
-            "title": "Changelog",
-            "path": "changelog",
-            "icon": "history"
           }
         ]
       }

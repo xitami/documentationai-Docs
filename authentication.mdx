@@ -1,57 +1,179 @@
 ---
-title: Authentication (Sample)
-description: Sample guidance for authentication and OpenAPI usage.
+title: Authentifizierung
+description: JWT-basierte Authentifizierung mit Better Auth, OAuth-Providern und Zwei-Faktor-Authentifizierung
 ---
 
-## Overview
+## Überblick
 
-This is sample content. Replace tokens, URLs, headers, and flows with your real authentication requirements.
+Brainz verwendet Better Auth für die Authentifizierung von Benutzern und Sitzungen. Passwörter werden mit `pgcrypto` in PostgreSQL gehasht und bei der Anmeldung serverseitig gegen den gespeicherten Hash geprüft.
 
-<Callout kind="info">
+Nach einer erfolgreichen Anmeldung erhält der Client ein JWT, das bei jedem authentifizierten Request als Bearer-Token im `Authorization`-Header mitsendet wird. PostGraphile liest die JWT-Claims aus und setzt daraus den Datenbankkontext, sodass Row-Level-Security-Policies ohne zusätzliche Filterlogik automatisch greifen.
 
-This site ships with placeholder content for authentication. Update this page and `openapi.yaml` to match your real API before sharing with users.
+## Authentifizierungs-Flow
+
+<Steps>
+  <Step title="Credentials senden" icon="lock">
+
+  Der Client sendet Anmeldedaten als E-Mail-und-Passwort-Kombination oder startet einen OAuth-Flow über einen unterstützten Provider.
+
+  Bei OAuth wird der Benutzer zuerst zum Provider weitergeleitet und nach erfolgreicher Autorisierung an Brainz zurückgeführt.
+
+  </Step>
+  <Step title="Validierung" icon="shield">
+
+  Better Auth prüft die übermittelten Credentials gegen die Datenbank. Für Passwort-Anmeldungen erfolgt der Vergleich über `pgcrypto`, sodass keine Klartext-Passwörter gespeichert oder verarbeitet werden.
+
+  Schlägt die Prüfung fehl, wird kein Token ausgestellt und der Request endet mit einem Authentifizierungsfehler.
+
+  </Step>
+  <Step title="JWT-Generierung" icon="code">
+
+  Nach erfolgreicher Anmeldung erstellt Brainz ein JWT mit den Claims `user_id`, `tenant_id` und den zugewiesenen Rollen.
+
+  Diese Claims bilden die Grundlage für Autorisierung und Mandantentrennung in nachgelagerten Requests.
+
+  </Step>
+  <Step title="Token-Übermittlung" icon="arrow-right">
+
+  Brainz gibt das JWT an den Client zurück. Der Client speichert das Token und sendet es bei jedem weiteren authentifizierten Request als Bearer-Token im `Authorization`-Header mit.
+
+  Ein erfolgreicher Request enthält dann denselben Benutzer- und Tenant-Kontext, der beim Login ermittelt wurde.
+
+  </Step>
+  <Step title="Datenbankkontext" icon="database">
+
+  PostGraphile setzt die relevanten Claims über `pgSettings` in den PostgreSQL-Sessionkontext. Die Funktion `current_user_id()` liest diesen Wert aus, und alle RLS-Policies filtern ab diesem Punkt automatisch auf Basis des aktuellen Benutzers und Tenants.
+
+  Dadurch bleibt die Zugriffskontrolle in der Datenbank und nicht in verteilten Anwendungsfiltern.
+
+  </Step>
+</Steps>
+
+## JWT-Konfiguration
+
+Konfigurieren Sie Signierung und Lebensdauer der Tokens über Umgebungsvariablen.
+
+```bash
+JWT_SECRET=your-secret-min-32-chars
+JWT_EXPIRY=7d
+```
+
+<Callout kind="alert">
+
+Der `JWT_SECRET` muss mindestens 32 Zeichen lang sein und kryptographisch sicher generiert werden. Rotieren Sie das Secret regelmäßig in Produktion.
 
 </Callout>
 
-This API uses OpenAPI to describe endpoints, parameters, and responses. The reference is generated from `openapi.yaml`, so keep that file up to date as your API evolves.
-
-## Authentication
-
-Use a bearer token in the `Authorization` header for authenticated requests. Replace the base URL and token with values for your own API.
-
-```bash
-curl https://api.example.com/v1/example \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-<ParamField header="Authorization" param-type="string" required="true">
-  `Bearer YOUR_TOKEN`
+<ParamField body="JWT_SECRET" param-type="string" required="true" show-location="false">
+Schlüssel zum Signieren und Verifizieren von JWTs. Verwenden Sie einen zufällig generierten Wert mit ausreichender Entropie.
 </ParamField>
 
-## Keep OpenAPI in sync
+<ParamField body="JWT_EXPIRY" param-type="string" required="false" show-location="false">
+Lebensdauer des Tokens im Better-Auth-Format, zum Beispiel `7d`. Wenn kein Wert gesetzt ist, verwendet Brainz den Standardwert von sieben Tagen.
+</ParamField>
 
-Define your authentication and base settings in `openapi.yaml` so the API Reference stays accurate and consistent.
+## OAuth-Provider
 
-At a minimum, you should:
+Brainz unterstützt OAuth 2.0 für externe Anmelde-Provider. Derzeit können Sie Google und GitHub unabhängig voneinander aktivieren.
 
-- Define one or more security schemes that describe how clients authenticate (for example, bearer token, API key in a header, or other scheme).
-- Reference those security schemes on operations that require authentication so they are clearly marked as secured.
-- Set the correct base URL and any required global headers (for example, versioning or tenant headers) so example requests are copy-pasteable.
+```bash
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+```
 
-When your real authentication flow changes (for example, new header names, token formats, or additional requirements), update `openapi.yaml`. The generated API Reference will then reflect your current auth model without needing to edit each endpoint page by hand.
+Das Callback-URL-Format lautet `APP_URL/api/auth/callback/provider`. Für Google ergibt sich zum Beispiel `https://brainz.example.com/api/auth/callback/google`.
 
-## Using the API reference
+<Callout kind="tip">
 
-Use the API Reference to explore endpoints, required parameters, and example responses. When you change authentication headers or base URLs, update `openapi.yaml` so the generated reference matches what your clients should use.
+OAuth-Provider können unabhängig voneinander aktiviert werden. Lassen Sie die entsprechenden Env-Variablen leer, um einen Provider zu deaktivieren.
 
-## Common mistakes
+</Callout>
 
-<Expandable title="Why am I getting a 401?" default-open="false">
+<ParamField body="GOOGLE_CLIENT_ID" param-type="string" required="false" show-location="false">
+Client-ID der Google-OAuth-Anwendung.
+</ParamField>
 
-Verify that:
+<ParamField body="GOOGLE_CLIENT_SECRET" param-type="string" required="false" show-location="false">
+Client-Secret der Google-OAuth-Anwendung.
+</ParamField>
 
-- The token is valid and not expired.
-- The token is sent in the `Authorization` header.
-- The header value includes the `Bearer` prefix and a space before the token.
+<ParamField body="GITHUB_CLIENT_ID" param-type="string" required="false" show-location="false">
+Client-ID der GitHub-OAuth-Anwendung.
+</ParamField>
 
-</Expandable>
+<ParamField body="GITHUB_CLIENT_SECRET" param-type="string" required="false" show-location="false">
+Client-Secret der GitHub-OAuth-Anwendung.
+</ParamField>
+
+## Zwei-Faktor-Authentifizierung (2FA)
+
+Brainz unterstützt TOTP-basierte Zwei-Faktor-Authentifizierung für zusätzliche Kontosicherheit. Die Implementierung ist mit gängigen Authenticator-Apps wie Google Authenticator, Authy und vergleichbaren TOTP-Clients kompatibel.
+
+Benutzer aktivieren 2FA in ihren Benutzereinstellungen. Bei der Aktivierung erzeugt Brainz zusätzlich Recovery Codes, mit denen sich der Zugriff wiederherstellen lässt, wenn das Authenticator-Gerät nicht verfügbar ist.
+
+<Callout kind="info">
+
+2FA ist optional und wird pro Benutzer aktiviert. Recovery Codes sollten sicher aufbewahrt werden.
+
+</Callout>
+
+- **TOTP-basiert** — Einmalcodes werden zeitbasiert generiert.
+- **App-kompatibel** — Funktioniert mit verbreiteten Authenticator-Apps.
+- **Benutzerbezogen** — Jeder Benutzer aktiviert 2FA separat.
+- **Recovery Codes** — Werden bei der Einrichtung erzeugt und dienen als Fallback.
+
+## Session-Management
+
+Brainz verwaltet Sitzungen tokenbasiert und unterstützt parallele Nutzung über mehrere Geräte. Die Standardlebensdauer eines JWT beträgt sieben Tage, kann aber über die Konfiguration angepasst werden.
+
+Bei aktiver Nutzung kann der Token-Refresh automatisch erfolgen, damit Benutzer nicht unnötig neu anmelden müssen. Zusätzlich lassen sich Sessions gerätebezogen invalidieren, ohne andere aktive Sitzungen zu beenden.
+
+- **Konfigurierbare Laufzeit** — JWTs verwenden standardmäßig eine Lebensdauer von sieben Tagen.
+- **Automatischer Refresh** — Aktive Sitzungen können verlängert werden.
+- **Gerätebezogene Invalidierung** — Einzelne Sessions lassen sich gezielt beenden.
+- **Multi-Device-Support** — Mehrere gleichzeitige Sitzungen pro Benutzer sind möglich.
+
+## Row-Level Security
+
+<Callout kind="alert">
+
+Die JWT-Claims fließen direkt in PostgreSQL-RLS ein. Das JWT enthält `user_id` und `tenant_id`. PostGraphile extrahiert diese Claims über `pgSettings` und setzt sie als session-lokale Variablen. Die PostgreSQL-Funktionen `current_user_id()` und `current_tenant_id()` lesen diese Werte aus. RLS-Policies referenzieren diese Funktionen und filtern damit alle Queries automatisch.
+
+</Callout>
+
+Diese Architektur verlagert die Autorisierung in die Datenbank. Anwendungs-Code muss dadurch nicht bei jeder Abfrage manuell `WHERE tenant_id = ...` oder benutzerbezogene Filter ergänzen.
+
+```sql
+CREATE POLICY tenant_isolation ON app_public.documents
+  USING (tenant_id = current_tenant_id());
+```
+
+## API-Nutzung
+
+Senden Sie das JWT bei GraphQL-Requests im `Authorization`-Header als Bearer-Token mit. Wenn das Token gültig ist, setzt Brainz den korrekten Benutzer- und Tenant-Kontext für die gesamte Anfrage.
+
+<CodeGroup tabs="cURL,JavaScript">
+```bash
+curl http://localhost:3000/graphql \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ currentUser { id username } }"}'
+```
+
+```javascript
+const response = await fetch("/graphql", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    query: `{ currentUser { id username } }`,
+  }),
+});
+```
+</CodeGroup>
+
+Ein erfolgreicher Request liefert Daten für den aktuell authentifizierten Benutzer zurück. Wenn das Token fehlt, abgelaufen ist oder ungültige Claims enthält, schlägt die Anfrage fehl, bevor RLS-geschützte Daten gelesen werden können.

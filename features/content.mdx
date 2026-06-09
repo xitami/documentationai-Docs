@@ -1,0 +1,272 @@
+---
+title: Content-System
+description: Universelles Content-System mit 40+ Typen, automatischer Anreicherung, Hybrid-Suche und Echtzeit-Kollaboration
+---
+
+## Überblick
+
+Brainz speichert Inhalte in einer einzigen, vereinheitlichten PostgreSQL-Tabelle: `app_public.content`. Items, Dokumente und Dateien teilen sich damit dasselbe Datenmodell und unterscheiden sich nur über `kind` als strukturellen Typ sowie `content_type` als semantische Klassifikation.
+
+Dieses Modell kombiniert freie Texte, flexible JSONB-Daten und suchoptimierte Metadaten in einer gemeinsamen Struktur. Neben `title`, `body` und `data` speichert Brainz auch `structured_data` für strukturierte Metadaten, `llm_context` für KI-generierten Kontext sowie die Grundlage für Volltextsuche, Vektorsuche und UI-spezifische Darstellung. Statt separater Tabellen pro Inhaltstyp gibt es ein Modell für alles.
+
+## Datenmodell
+
+Die Tabelle `app_public.content` ist das zentrale Persistenzmodell für alle Inhalte. Sie trägt Identität, Mandantenkontext, strukturellen Typ, semantischen Typ sowie typabhängige Payloads für Text, Dokumente und Dateien.
+
+| Spalte | Typ | Zweck |
+| --- | --- | --- |
+| `id` | `bigint` | Interne numerische ID |
+| `uuid` | `uuid` | Stabile externe Kennung |
+| `tenant_id` | `integer` | Mandantentrennung |
+| `owner_id` | `integer` | Besitzer des Inhalts |
+| `kind` | `text` | Struktureller Typ: `item`, `document` oder `file` |
+| `content_type` | `text` | Semantischer Typ wie `recipe`, `movie`, `bookmark` oder `task` |
+| `title` | `text` | Titel oder Hauptbezeichnung |
+| `body` | `text` | Primärer Textinhalt, vor allem für Items |
+| `data` | `jsonb` | Strukturierte Dokumentdaten, vor allem für Documents |
+| `filename` | `text` | Dateiname bei Dateien |
+| `mime_type` | `text` | MIME-Typ bei Dateien |
+| `size_bytes` | `bigint` | Dateigröße in Bytes |
+| `storage_key` | `text` | Objektspeicher-Schlüssel |
+| `tags` | `text[]` | Freie Tags |
+| `structured_data` | `jsonb` | Strukturierte Metadaten im Stil von Schema.org |
+| `llm_context` | `jsonb` | KI-Zusammenfassungen, Kontext und embedding-nahe Texte |
+| `status` | `content_status` | Lebenszyklus wie `draft`, `active` oder `archived` |
+| `is_public` | `boolean` | Öffentliche Sichtbarkeit |
+| `ai_excluded` | `boolean` | Ausschluss aus KI-Verarbeitung |
+| `pinned` | `boolean` | Anheften im UI |
+| `created_at` | `timestamptz` | Erstellungszeitpunkt |
+| `updated_at` | `timestamptz` | Letzte Aktualisierung |
+
+```sql
+CREATE TABLE app_public.content (
+  id          bigint PRIMARY KEY,
+  uuid        uuid UNIQUE NOT NULL,
+  tenant_id   integer NOT NULL,
+  kind        text CHECK (kind IN ('item', 'document', 'file')),
+  content_type text,
+  title       text,
+  body        text,
+  data        jsonb,
+  tags        text[],
+  structured_data jsonb,
+  llm_context jsonb,
+  status      content_status DEFAULT 'draft',
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
+);
+```
+
+<Callout kind="info">
+
+Die drei ursprünglichen Tabellen `items`, `documents` und `files` existieren weiterhin als Kompatibilitäts-Views mit INSTEAD-OF Triggers. Schreibzugriffe werden dabei in die einheitliche Content-Tabelle umgeleitet.
+
+</Callout>
+
+## Content-Typen (40+)
+
+`content_type` beschreibt, was ein Inhalt fachlich ist. Dadurch kann Brainz denselben Speicher- und Suchkern für sehr unterschiedliche Inhalte verwenden und typabhängige Verarbeitung aktivieren.
+
+### Dokumente und Wissen
+
+- `note`
+- `article`
+- `blogpost`
+- `bookmark`
+- `quote`
+- `idea`
+- `journal`
+- `faq`
+- `manual`
+- `changelog`
+
+### Medien und Unterhaltung
+
+- `movie`
+- `book`
+- `game`
+- `podcast`
+- `music`
+- `meme`
+- `image`
+- `audio`
+- `video`
+
+### Strukturiert
+
+- `recipe`
+- `contact`
+- `product`
+- `event`
+- `appointment`
+- `invoice`
+- `receipt`
+- `order`
+- `credential`
+- `config`
+
+### Aufgaben und Projekte
+
+- `task`
+- `project`
+- `shopping_list`
+- `wishlist`
+- `reminder`
+- `meeting`
+
+### Kommunikation und Soziales
+
+- `feedback`
+- `testimonial`
+- `review`
+- `job_listing`
+- `course`
+- `story`
+
+### Weitere
+
+- `location`
+- `place`
+- `medical`
+- `warranty`
+- `travel`
+- `expense`
+- `recommendation`
+
+<Callout kind="tip">
+
+Content-Typen steuern, welche Anreicherungs-Pipeline greift und wie der Inhalt im UI dargestellt wird. Neue Typen lassen sich hinzufügen, ohne das Basisschema der Tabelle zu ändern.
+
+</Callout>
+
+## Anreicherungs-Pipeline
+
+Nach der Erstellung eines Inhalts startet Brainz eine typabhängige Verarbeitungskette. Das Ziel ist nicht nur Speicherung, sondern die Erzeugung eines suchbaren, strukturierten und kollaborativen Objekts.
+
+<Steps>
+  <Step title="Inhalt erfassen" icon="edit">
+
+  Content entsteht über API, Webformular, Import oder MCP. Bereits an diesem Punkt wird der Datensatz in `app_public.content` angelegt und einem Tenant sowie einem Owner zugeordnet.
+
+  </Step>
+
+  <Step title="Typ-Erkennung" icon="check-circle">
+
+  Brainz erkennt den `content_type` automatisch oder übernimmt ihn explizit aus dem Request. Diese Entscheidung bestimmt, welche Worker und Enrichment-Module anschließend ausgeführt werden.
+
+  </Step>
+
+  <Step title="BullMQ Job starten" icon="play-circle">
+
+  Die eigentliche Verarbeitung läuft asynchron im Hintergrund. Dadurch bleibt die Erfassung schnell, auch wenn externe APIs, Extraktion oder KI-Verarbeitung beteiligt sind.
+
+  </Step>
+
+  <Step title="Typ-spezifische Anreicherung" icon="zap">
+
+  Abhängig vom `content_type` greift eine spezialisierte Pipeline.
+
+  - **`article`** — Readability-Extraktion, Markdown-Normalisierung und Schema.org-Daten
+  - **`recipe`** — KI-Strukturierung in Zutaten, Schritte und Zeitangaben
+  - **`movie`** — TMDB-Abfrage für Poster, Credits, Genres und Streaming-Daten
+  - **`book`** — OpenLibrary für ISBN, Cover und Autorendaten
+  - **`game`** — RAWG für Bewertungen, Screenshots und Plattformen
+  - **`podcast`** — Apple Podcasts für Kanal- und Episodenmetadaten
+  - **`image`** und **`file`** — Vision Intelligence für OCR und Kategorisierung
+
+  </Step>
+
+  <Step title="Embedding generieren" icon="database">
+
+  Nach der inhaltlichen Aufbereitung erzeugt Brainz Embeddings für die semantische Suche. Diese Vektoren werden chunk-basiert gespeichert und bilden die Grundlage für pgvector-gestützte Suche.
+
+  </Step>
+
+  <Step title="Tags vorschlagen" icon="tag">
+
+  Tag-Intelligence analysiert Inhalt, Kontext und erkannte Entitäten. Die resultierenden Tags verbessern sowohl Navigation als auch facettierte Suche.
+
+  </Step>
+
+  <Step title="Structured Data erzeugen" icon="code">
+
+  Brainz extrahiert strukturierte Metadaten in einer Schema.org-nahen Form. Dadurch werden Inhalte nicht nur lesbar, sondern auch maschinell auswertbar.
+
+  </Step>
+
+  <Step title="Thumbnail und Preview erzeugen" icon="image">
+
+  Für visuelle Inhaltstypen oder angereicherte Assets werden Vorschaubilder und UI-Previews vorbereitet. Das beschleunigt Darstellung in Listen, Suche und Detailansichten.
+
+  </Step>
+</Steps>
+
+## Artikel-Extraktion
+
+Für URL-basierte Inhalte nutzt Brainz eine Readability-basierte Hauptinhalts-Extraktion. Ziel ist nicht das rohe HTML der Quelle, sondern ein bereinigter, lesbarer Dokumentkörper in Markdown.
+
+Die Fetch-Pipeline arbeitet in drei Stufen mit Eskalation bei dünnem Inhalt oder Bot-Schutz. Zuerst erfolgt ein Plain Fetch, danach ein JavaScript-Render-Fetch und zuletzt ein Full-Browser-Lauf über Browser-Automation. Gleichzeitig respektiert die Pipeline `robots.txt`, prüft tenantbezogene Quoten und vermeidet Dubletten.
+
+Aus dem Ergebnis entstehen Markdown, extrahierte Metadaten und Schema.org-nahe JSON-LD-Strukturen. Über einen deduplizierenden Shared-Content-Layer kann Brainz identische Quellen tenantübergreifend konsistent behandeln, ohne jede URL mehrfach neu zu verarbeiten.
+
+## Medien-Enrichment
+
+Medieninhalte werden über spezialisierte externe Datenquellen angereichert. Brainz kombiniert dabei Primärquellen für Stammdaten mit ergänzenden Quellen für Scores, Bilder oder Fallback-Informationen.
+
+| Inhaltstyp | Primäre Quelle | Ergänzung |
+| --- | --- | --- |
+| Film und Serie | TMDB | OMDB für Scores, Wikipedia als Fallback |
+| Buch | OpenLibrary | Cover- und Bibliografiedaten |
+| Spiel | RAWG | Bewertungen, Plattformen, Screenshots |
+| Podcast | Apple Podcasts | Kanal- und Metadaten |
+| Musik | MusicBrainz | Werk- und Artist-Metadaten |
+
+Für diese Enrichment-Pfade nutzt Brainz einen In-Memory-Cache mit mehrtägiger Laufzeit sowie persistente Datenbank-Caches. Bei Medienanreicherung liegen Detaildaten typischerweise bis zu sieben Tage im Cache, während häufiger wechselnde Informationen wie Verfügbarkeiten kürzer gehalten werden.
+
+## Echtzeit-Kollaboration
+
+Dokumente unterstützen kollaboratives Editieren über Yjs als CRDT-Schicht. Die Synchronisation läuft über WebSocket auf dem Pfad `/api/sync/:docUuid`.
+
+Der Zugriff ist ticketbasiert. Clients verbinden sich mit einem Single-Use-Token, danach prüft der Server den Zugriff gegen die zugrunde liegende Content-Ressource. Owner erhalten Schreibzugriff, geteilte Nutzer abhängig von ihrer Rolle Lese- oder Schreibrechte. Nicht autorisierte Verbindungen werden serverseitig abgewiesen.
+
+Im Arbeitsspeicher hält Brainz pro Dokument eine `SharedDoc`-Instanz mit Yjs-Dokument, Awareness-State und aktiven Verbindungen. Awareness überträgt Cursor-Positionen und Selections zwischen Peers, ohne den eigentlichen Dokumentinhalt zu verändern.
+
+Änderungen werden nicht nach jedem Keystroke in PostgreSQL geschrieben. Stattdessen persistiert der Server einen debounced Snapshot nach 30 Sekunden in `content_yjs_state`, wobei der binäre Yjs-Zustand als `bytea` gespeichert wird. Beim letzten Disconnect erfolgt zusätzlich ein finaler Snapshot.
+
+Wenn für ein Dokument noch kein CRDT-State existiert, bootstrapped Brainz den Yjs-Zustand aus vorhandenem Lexical-JSON. So können bestehende Dokumente ohne vorgelagerte Migration in die kollaborative Bearbeitung übernommen werden.
+
+## Suche
+
+Brainz kombiniert klassische Volltextsuche, semantische Vektorsuche und Facettierung. Dadurch lässt sich sowohl nach exakten Begriffen als auch nach Bedeutung, Aktualität und räumlicher Nähe suchen.
+
+### Volltextsuche (Layer 1)
+
+Die erste Schicht basiert auf PostgreSQL `tsvector`. Titel, Typinformationen und textuelle Inhalte werden gewichtet indexiert, sodass Treffer im Titel stärker zählen als Inhalte im Body oder in tieferen Datenstrukturen.
+
+Für Dokumente flatten Hilfsfunktionen JSONB-Inhalte zu suchbarem Text. GIN-Indizes beschleunigen die Abfrage, und mehrsprachige FTS-Konfigurationen verbessern die Relevanz über unterschiedliche Sprachräume hinweg.
+
+### Hybrid Search (Layer 2)
+
+Die zweite Schicht kombiniert mehrere Signale in einem gemeinsamen Ranking. Die Kandidatengewinnung startet mit einer ANN-Suche über Embeddings und wird anschließend um textuelle, unscharfe, zeitliche und geobasierte Signale ergänzt.
+
+| Signal | Gewicht | Beschreibung |
+| --- | --- | --- |
+| FTS | 0.30 | Gewichtete `tsvector`-Suche |
+| Vektor | 0.35 | Semantische Ähnlichkeit über pgvector |
+| Fuzzy | 0.10 | Trigram-Ähnlichkeit über `pg_trgm` |
+| Recency | 0.15 | Exponentieller Abfall mit Halbwertszeit von 14 Tagen |
+| Geo | 0.10 | Distanzbewertung über Haversine |
+
+Unterstützte Suchmodi sind `hybrid`, `semantic`, `text` und `nearby`. Im Standardmodus `hybrid` werden alle verfügbaren Signale kombiniert.
+
+<Callout kind="info">
+
+Fehlen einzelne Signale, zum Beispiel weil kein Embedding vorliegt, verteilt Brainz die Gewichte automatisch auf die verfügbaren Kanäle um. Das Ranking bleibt dadurch auch bei unvollständigen Daten stabil.
+
+</Callout>
+
+### Facettierte Suche (Layer 3)
+
+Die dritte Schicht ergänzt die Ergebnisliste um aggregierte Facetten. Brainz berechnet dabei insbesondere Facetten nach `source_type` und Tags.
+
+Pro Anfrage werden die häufigsten Facettenwerte zurückgegeben, typischerweise als Top-20 pro Kategorie. Damit lassen sich Treffer nach Typen, Quellen und Themen eingrenzen, ohne eine neue Suchlogik pro Oberfläche zu implementieren.

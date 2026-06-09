@@ -1,0 +1,363 @@
+---
+title: Deployment
+description: Brainz deployen mit Docker Compose, Railway oder Bare-Metal
+---
+
+## Überblick
+
+Brainz lässt sich in mehreren Betriebsmodellen deployen, je nachdem, wie viel Kontrolle Sie über Infrastruktur, Netzwerk und Betrieb behalten möchten.
+
+Für Self-Hosting ist **Docker Compose** der empfohlene Standardpfad. Das Setup deckt die komplette Anwendung mit PostgreSQL, Redis und App-Container ab und passt gut zu einzelnen Hosts oder kleinen VM-basierten Umgebungen.
+
+**Railway** eignet sich, wenn Sie Hosting und grundlegende Orchestrierung auslagern möchten. Für Umgebungen mit eigenen Betriebsstandards, vorhandener Linux-Infrastruktur oder strikten Integrationsvorgaben unterstützt Brainz außerdem **Bare-Metal** mit Node.js direkt auf dem Host.
+
+**Cloudflare Workers** sind kein Ersatz für das Haupt-Backend. Brainz nutzt sie nur für ergänzende Edge-Dienste wie Bildauslieferung, Feed-Verarbeitung und Proxy-Aufgaben.
+
+## Voraussetzungen
+
+<Callout kind="info">
+
+Vor dem Deployment sollten diese Basisdienste und Rahmenbedingungen vorhanden sein:
+
+- **PostgreSQL 16+** mit den Extensions `pgvector`, `pgcrypto` und `uuid-ossp`
+- **Redis 7+**
+- **S3-kompatibler Objektspeicher** wie MinIO, Cloudflare R2 oder AWS S3
+- **Mindestens 2 GB RAM**, empfohlen sind 4 GB
+- **Eine Domain mit SSL** für Production
+- **Node.js 20+** nur für Bare-Metal-Deployments
+
+</Callout>
+
+## Docker Compose
+
+Docker Compose ist der schnellste und konsistenteste Weg, Brainz selbst zu betreiben. Das Production-Setup verwendet die produktionsspezifische Compose-Datei und startet die Anwendung standardmäßig auf Port `3000`.
+
+<Steps>
+<Step title="Repository klonen" icon="github">
+
+```bash
+git clone https://github.com/xitami/PostgresBackend.git
+cd PostgresBackend
+```
+
+Nach dem Klonen befinden Sie sich im Projektverzeichnis, in dem die Compose-Dateien und die Anwendungsquellen liegen.
+
+</Step>
+
+<Step title="Environment konfigurieren" icon="settings">
+
+```bash
+cp .env.example .env
+# Alle erforderlichen Variablen setzen (siehe /configuration)
+```
+
+Setzen Sie vor dem ersten Start alle produktionsrelevanten Variablen für Datenbank, Redis, JWT und Objektspeicher. Wenn die Konfiguration vollständig ist, kann die Anwendung ohne interaktive Nacharbeit starten.
+
+</Step>
+
+<Step title="Production-Stack starten" icon="play-circle">
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Der Stack startet PostgreSQL 16 mit `pgvector` und `pg_cron`, Redis 7 sowie die Brainz-App. Prüfen Sie anschließend mit `docker compose ps`, ob alle Container den Status `Up` erreicht haben.
+
+</Step>
+
+<Step title="Reverse Proxy einrichten" icon="shield">
+
+Stellen Sie die Anwendung in Production nicht direkt auf Port `3000` ins Internet. Setzen Sie einen Reverse Proxy davor und terminieren Sie dort TLS.
+
+<CodeGroup tabs="Caddy,Nginx">
+```caddy
+brainz.example.com {
+  reverse_proxy localhost:3000
+}
+```
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name brainz.example.com;
+
+  location / {
+    proxy_pass http://localhost:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+  }
+}
+```
+</CodeGroup>
+
+<Callout kind="tip">
+
+Der WebSocket-Upgrade ist wichtig für Echtzeit-Features und Yjs-Kollaboration. Wenn der Proxy `Upgrade` und `Connection` nicht korrekt weitergibt, funktionieren kollaborative Bearbeitung und Live-Synchronisation nicht zuverlässig.
+
+</Callout>
+
+</Step>
+
+<Step title="SSL-Zertifikat aktivieren" icon="lock">
+
+Mit Caddy erhalten Sie Let's Encrypt-Zertifikate in der Regel automatisch. Wenn Sie Nginx verwenden, richten Sie Zertifikatsverwaltung separat ein, zum Beispiel mit Certbot und automatischer Erneuerung.
+
+</Step>
+
+<Step title="Healthcheck prüfen" icon="check-circle">
+
+```bash
+curl http://localhost:3000/health
+```
+
+Ein erfolgreicher Check bestätigt, dass der App-Prozess Anfragen annimmt. Wenn der Endpoint nicht antwortet, prüfen Sie zuerst Container-Logs, Datenbankverbindung und geladene Environment-Variablen.
+
+</Step>
+</Steps>
+
+## Railway
+
+Railway ist sinnvoll, wenn Sie Build, Deployment und Laufzeitumgebung als Managed Service nutzen möchten. Das Repository enthält ein Railway-spezifisches Dockerfile, und Railway erkennt containerbasierte Deployments automatisch.
+
+<Steps>
+<Step title="Repository mit Railway verbinden" icon="github">
+
+Verbinden Sie das Brainz-Repository mit einem Railway-Projekt. Nutzen Sie dabei den Hauptbranch oder einen dedizierten Deployment-Branch, wenn Sie Releases getrennt von der Entwicklung ausrollen.
+
+</Step>
+
+<Step title="Environment-Variablen setzen" icon="settings">
+
+Hinterlegen Sie mindestens die Verbindungsdaten für Datenbank und Redis sowie die Secrets für Authentifizierung und Objektspeicher. Dazu gehören insbesondere `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` und die S3-Konfiguration.
+
+</Step>
+
+<Step title="PostgreSQL- und Redis-Add-ons aktivieren" icon="database">
+
+Aktivieren Sie die verwalteten Dienste für PostgreSQL und Redis im Railway-Projekt. Achten Sie darauf, dass die erzeugten Verbindungsdaten mit den gesetzten Environment-Variablen übereinstimmen.
+
+</Step>
+
+<Step title="Deploy auslösen" icon="rocket">
+
+Starten Sie das erste Deployment aus Railway heraus oder über einen Push in den verbundenen Branch. Nach dem Build sollte die Anwendung auf dem zugewiesenen Service-Port verfügbar sein und den Healthcheck bestehen.
+
+</Step>
+
+<Step title="Custom Domain konfigurieren" icon="external-link">
+
+Ordnen Sie dem Service Ihre Produktionsdomain zu und aktivieren Sie TLS über Railway. Prüfen Sie nach der DNS-Propagation, ob die Anwendung über die öffentliche Domain erreichbar ist.
+
+</Step>
+</Steps>
+
+<Callout kind="info">
+
+Railway erkennt das Dockerfile automatisch. Stellen Sie sicher, dass `pgvector` als Extension im PostgreSQL-Add-on aktiviert ist, bevor Sie Migrationen oder suchbezogene Funktionen produktiv nutzen.
+
+</Callout>
+
+## Bare-Metal
+
+Bare-Metal ist der richtige Pfad, wenn Sie Brainz direkt auf einem Linux-Host mit eigener Prozessaufsicht, eigener Paketverwaltung und bestehender Infrastruktur betreiben möchten. Dieses Modell gibt Ihnen die meiste Kontrolle, verlangt aber auch sauberes Dependency- und Service-Management.
+
+<Steps>
+<Step title="Node.js 20+ und npm installieren" icon="package">
+
+Installieren Sie Node.js 20 oder neuer direkt auf dem Host. Verifizieren Sie danach mit `node -v` und `npm -v`, dass die Laufzeit korrekt im Systempfad verfügbar ist.
+
+</Step>
+
+<Step title="PostgreSQL 16 einrichten und Extensions aktivieren" icon="database">
+
+Erstellen Sie die Datenbank und aktivieren Sie die benötigten Extensions vor dem ersten Anwendungsstart.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pgvector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+```
+
+Ohne diese Extensions schlagen Teile des Schemas oder suchbezogene Funktionen fehl. Führen Sie den SQL-Block mit einem Benutzer aus, der Extensions installieren darf.
+
+</Step>
+
+<Step title="Redis installieren und starten" icon="zap">
+
+Installieren Sie Redis 7 oder neuer und stellen Sie sicher, dass der Dienst beim Booten automatisch startet. Prüfen Sie die Erreichbarkeit mit `redis-cli ping`; die erwartete Antwort ist `PONG`.
+
+</Step>
+
+<Step title="Abhängigkeiten installieren" icon="download">
+
+```bash
+npm install
+```
+
+Führen Sie den Befehl im Projektverzeichnis aus. Nach erfolgreicher Installation sollte das Verzeichnis alle zur Laufzeit benötigten Node-Abhängigkeiten enthalten.
+
+</Step>
+
+<Step title="Migrationen ausführen" icon="terminal">
+
+```bash
+node scripts/migrate.js
+```
+
+Die Migrationen legen das Datenbankschema an und aktualisieren es auf den erwarteten Stand. Wenn der Lauf erfolgreich war, startet die Anwendung ohne Schemafehler gegen PostgreSQL.
+
+</Step>
+
+<Step title="Prozessmanager einrichten" icon="settings">
+
+Betreiben Sie Brainz in Production nicht mit einer interaktiven Shell-Sitzung. Nutzen Sie einen Prozessmanager wie PM2 oder `systemd`, damit der Dienst automatisch startet und bei Fehlern neu gestartet wird.
+
+```ini
+[Unit]
+Description=brainz
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=brainz
+WorkingDirectory=/opt/brainz
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Die gezeigte `systemd`-Unit entspricht dem typischen Bare-Metal-Betrieb. Passen Sie `User`, `WorkingDirectory` und gegebenenfalls den Node-Pfad an Ihre Host-Umgebung an.
+
+</Step>
+
+<Step title="Reverse Proxy und SSL einrichten" icon="lock">
+
+Setzen Sie vor den Node-Prozess einen Reverse Proxy und terminieren Sie TLS dort. Die Proxy-Konfiguration entspricht dem Muster aus der Docker-Compose-Sektion und sollte WebSocket-Upgrade explizit unterstützen.
+
+</Step>
+</Steps>
+
+## Cloudflare Workers
+
+<Callout kind="alert">
+
+Cloudflare Workers sind ergänzende Edge-Services und kein vollständiger Ersatz für das Brainz-Backend.
+
+</Callout>
+
+Brainz nutzt Cloudflare Workers für klar abgegrenzte Aufgaben an der Edge. Dazu gehören ein **Image CDN** für Größenanpassung und Caching, ein **RSS Feed Fetcher**, **E-Mail-Ingestion** sowie ein **Fetch-Proxy**.
+
+Diese Worker werden separat über Wrangler deployt und ergänzen den Hauptserver. Planen Sie sie als zusätzliche Infrastrukturkomponenten ein, nicht als primäre Laufzeit für Datenbank, API und Hintergrundverarbeitung.
+
+## Backups
+
+Backups müssen mindestens Datenbank und Objektspeicher abdecken. Die Anwendungsdateien selbst lassen sich in der Regel aus dem Repository oder dem Build-Artefakt reproduzieren, produktive Daten dagegen nicht.
+
+```bash
+# PostgreSQL Backup
+pg_dump -Fc brainz > backup_$(date +%Y%m%d).dump
+
+# Restore
+pg_restore -d brainz backup_20250101.dump
+```
+
+Für den Objektspeicher haben sich zwei Strategien bewährt:
+
+- **Bucket-Versionierung aktivieren**, wenn Ihr S3-kompatibler Anbieter diese Funktion unterstützt
+- **Objektspeicher extern sichern**, zum Beispiel mit `restic`, wenn Sie zusätzliche Restore-Pfade oder Offsite-Backups benötigen
+- **Automatisieren**, idealerweise mit täglichen Datenbank-Backups und wöchentlichen Sicherungen des S3-Buckets
+
+<Callout kind="alert">
+
+Testen Sie Restores regelmäßig. Ein Backup ohne verifiziertes Restore ist kein Backup.
+
+</Callout>
+
+## Updates
+
+Führen Sie Updates kontrolliert und in einer festen Reihenfolge aus, damit Schemaänderungen und Anwendungsstand zueinander passen.
+
+<Steps>
+<Step title="Backup erstellen" icon="database">
+
+Sichern Sie vor jedem Update die PostgreSQL-Datenbank und den Objektspeicher. Dieser Schritt ist besonders wichtig, wenn das Release Migrationen oder Änderungen an Dateiformaten enthält.
+
+</Step>
+
+<Step title="Neuen Code ziehen" icon="download">
+
+```bash
+git pull
+```
+
+Ziehen Sie den gewünschten Release-Stand auf den Host oder in das Arbeitsverzeichnis des Deployments. Verwenden Sie in Production nach Möglichkeit getaggte Releases statt beliebiger Zwischenstände.
+
+</Step>
+
+<Step title="Migrationen ausführen" icon="terminal">
+
+```bash
+node scripts/migrate.js
+```
+
+Führen Sie Datenbankmigrationen immer mit dem neuen Code-Stand aus. Wenn eine Migration fehlschlägt, starten Sie den App-Service erst nach Ursachenanalyse und gegebenenfalls Restore neu.
+
+</Step>
+
+<Step title="Container oder Service neu starten" icon="refresh-cw">
+
+Starten Sie nach erfolgreicher Migration die Container oder den Prozessmanager neu, damit alle Prozesse den aktualisierten Code verwenden. Prüfen Sie danach sofort den Healthcheck und die Logs.
+
+</Step>
+</Steps>
+
+<Callout kind="tip">
+
+Bei Docker können Sie Updates häufig mit `docker compose pull && docker compose up -d` einspielen. Prüfen Sie trotzdem nach jedem Rollout, ob Migrationen erfolgreich waren und der Endpoint `/health` erreichbar ist.
+
+</Callout>
+
+## Monitoring
+
+Für den operativen Betrieb sollten Sie sowohl Dienstverfügbarkeit als auch interne Engpässe beobachten. Brainz stellt dafür einen einfachen Healthcheck bereit und schreibt Logs in Standardausgabe und Standardfehler.
+
+Wichtige Monitoring-Signale im laufenden Betrieb:
+
+- **Healthcheck-Endpoint:** `GET /health`
+- **Logging:** `stdout` und `stderr`, kompatibel mit `journald`, Docker-Logs und Plattformen wie Datadog
+- **PostgreSQL Connection Pool:** Auslastung, Wartezeiten und Verbindungsfehler
+- **Redis Memory:** Speichernutzung, Evictions und Verfügbarkeit
+- **BullMQ Queue Depth:** Anzahl wartender oder blockierter Jobs
+- **Response Times:** Latenzen für API und serverseitige Verarbeitung
+- **Error Rates:** Anwendungsausnahmen, 5xx-Antworten und wiederkehrende Job-Fehler
+
+<Tabs>
+<Tab title="Basis-Checks" icon="check-circle">
+
+Konzentrieren Sie sich in kleinen Installationen zuerst auf die Minimalmenge an Betriebsmetriken:
+
+- Erreichbarkeit von `GET /health`
+- freie CPU- und RAM-Reserven
+- PostgreSQL-Verfügbarkeit
+- Redis-Verfügbarkeit
+- Fehler im App-Log nach Deployments
+
+</Tab>
+
+<Tab title="Production-Checks" icon="bar-chart">
+
+Für produktive Umgebungen sollten Sie zusätzlich Trends und Lastspitzen erfassen:
+
+- Antwortzeiten nach Endpoint oder Serviceklasse
+- Datenbankpool-Auslastung unter Last
+- Redis-Speicherdruck und Neustarts
+- Queue-Länge und Job-Laufzeiten
+- Fehlerraten pro Minute oder pro Release
+
+</Tab>
+</Tabs>
