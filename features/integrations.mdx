@@ -1,0 +1,149 @@
+---
+title: Integrationen & Enrichment
+description: Externe Dienste in Brainz für Medien-Anreicherung, KI, Suche, Kommunikation und Edge-Processing im Überblick
+---
+
+## Überblick
+
+Brainz bindet externe Dienste für Medien-Anreicherung, KI-Verarbeitung, Suche, Kommunikation und Edge-Processing an. Die Integrationen erweitern das System gezielt um Metadaten, Modellzugriffe, Benachrichtigungen und spezialisierte Worker-Pfade. Alle Dienste sind optional, soweit nicht anders angegeben, und fehlende Schlüssel oder Ausfälle werden kontrolliert abgefangen.
+
+## Übersicht aller Dienste
+
+Die folgende Tabelle zeigt, welche externen Dienste Brainz einbindet, wofür sie verwendet werden und welche Umgebungsvariablen dafür typischerweise relevant sind.
+
+| Dienst | Kategorie | Zweck | Pflicht | Env-Variable |
+| --- | --- | --- | --- | --- |
+| TMDB | Medien | Film- und Serien-Metadaten | Optional | `TMDB_API_KEY` |
+| OpenLibrary | Medien | Buch-Metadaten | Optional | Kein Key nötig |
+| RAWG | Medien | Spiel-Metadaten | Optional | Kein Key nötig |
+| Apple Podcasts | Medien | Podcast-Metadaten | Optional | Kein Key nötig |
+| MusicBrainz | Medien | Musik-Metadaten | Optional | Kein Key nötig |
+| OMDB | Medien | Film-Scores als Ergänzung | Optional | Kein Key nötig |
+| Wikipedia | Medien | Fallback-Informationen | Optional | Kein Key nötig |
+| Brave Search | Suche | Web-Suche und suchgestützte Anreicherung | Optional | `BRAVE_SEARCH_API_KEY` |
+| OpenAI | KI | Chat, Embeddings, Vision und STT | Optional, empfohlen | `AI_BASE_URL` + `AI_API_KEY` oder `CF_AIG_TOKEN` |
+| Anthropic | KI | Chat-Modelle | Optional | Über `AI_BASE_URL` |
+| Google AI Studio | KI | Gemini-Modelle | Optional | Über `AI_BASE_URL` |
+| Ollama | KI | Lokale Modelle | Optional | `AI_BASE_URL` |
+| Cloudflare AI Gateway | KI | API-Routing und Caching | Optional | `CF_AIG_TOKEN` |
+| Nominatim | Geo | Geocoding für Adressen und Orte | Optional | Kein Key nötig |
+| SMTP | Kommunikation | Ausgehende E-Mails | Optional | `SMTP_HOST` etc. |
+| VAPID/Web Push | Kommunikation | Push-Benachrichtigungen | Optional | `VAPID_PUBLIC_KEY` etc. |
+| Google OAuth | Auth | Social Login | Optional | `GOOGLE_CLIENT_ID` |
+| GitHub OAuth | Auth | Social Login | Optional | `GITHUB_CLIENT_ID` |
+| S3-kompatibler Storage | Storage | Dateispeicherung | Pflicht | `S3_ENDPOINT` etc. |
+| Cloudflare Workers | Edge | Image CDN, RSS, Email Ingest, Fetch Proxy | Optional | Separates Deployment |
+
+## Medien-Enrichment
+
+Die Enrichment-Pipeline wählt Datenquellen abhängig vom Inhaltstyp. Brainz kombiniert dabei spezialisierte Primärquellen für Stammdaten mit ergänzenden Quellen für Scores, Bilder oder Fallback-Informationen. So bleibt die Anreicherung pro Medientyp präzise, ohne alle Inhalte durch dieselbe Quelle zu schicken.
+
+Für diese Enrichment-Pfade nutzt Brainz einen In-Memory-Cache mit mehrtägiger Laufzeit sowie persistente Datenbank-Caches. Wiederholte Abfragen an externe Dienste werden dadurch reduziert, und bereits bekannte Metadaten stehen schneller zur Verfügung.
+
+### Enrichment-Pfade nach Inhaltstyp
+
+| Inhaltstyp | Primäre Quelle | Ergänzende Quelle | Was wird angereichert |
+| --- | --- | --- | --- |
+| Film und Serie | TMDB | OMDB, Wikipedia | Stammdaten, Scores, Bilder, Fallback-Informationen |
+| Buch | OpenLibrary | Cover- und Bibliografiedaten | Titel, Autorendaten, Cover, bibliografische Metadaten |
+| Spiel | RAWG | Bewertungen, Plattformen, Screenshots | Plattformen, Bewertungen, visuelle Metadaten |
+| Podcast | Apple Podcasts | Kanal- und Metadaten | Feed- und Kanalinformationen, Podcast-Metadaten |
+| Musik | MusicBrainz | Werk- und Artist-Metadaten | Werke, Releases, Künstler- und Beziehungsdaten |
+
+<Callout kind="info">
+
+Fehlen einzelne API-Schlüssel oder ist eine Quelle temporär nicht erreichbar, überspringt Brainz nur die betroffenen Enrichment-Schritte. Das übrige System und alle nicht betroffenen Pipelines bleiben aktiv.
+
+</Callout>
+
+## KI-Provider
+
+Alle KI-Aufgaben laufen über eine zentrale AI Service Registry. Diese Registry unterstützt mehrere Provider, erlaubt task-spezifisches Routing ohne Codeänderungen und kann Zugriffe über das Cloudflare AI Gateway für Routing und Caching führen.
+
+Unterstützte Provider verwenden das Format `provider/model-name`. Brainz kann damit je nach Aufgabe unterschiedliche Modelle für Chat, Embeddings oder weitere KI-Pfade ansprechen.
+
+### Unterstützte Provider und Modellbeispiele
+
+- **OpenAI** — `gpt-5-mini`, `gpt-5`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4.1`, `text-embedding-3-small`, `whisper-1`
+- **Anthropic** — `claude-sonnet-4`, `claude-3-5-haiku`
+- **Google** — `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.0-flash`
+- **Ollama** — beliebige lokale, OpenAI-kompatible Modelle
+
+<Callout kind="tip">
+
+Lokale Modelle über Ollama halten Daten im eigenen Netzwerkpfad. Das ist besonders dann sinnvoll, wenn du KI-Funktionen mit engeren Datenschutz- oder Infrastrukturvorgaben betreiben willst.
+
+</Callout>
+
+## Suche & Wissensanreicherung
+
+Brave Search ergänzt Brainz um Web-Suche und suchgestützte Anreicherung. Das ist vor allem für Assistenz- und Recherchepfade relevant, in denen aktuelle oder externe Informationen in die Verarbeitung einfließen sollen.
+
+Für Knowledge Entities erkennt Brainz unter anderem `person`, `organization`, `place` und `event`. Orte und Adressen werden dabei über Nominatim geocodiert, sodass Inhalte mit räumlichen Bezügen strukturiert verarbeitet werden können.
+
+Wikipedia dient in mehreren Pfaden als Fallback-Quelle. Wenn eine Primärquelle keine ausreichenden Informationen liefert, kann Brainz damit fehlende Kontextdaten ergänzen, ohne den gesamten Verarbeitungsschritt abzubrechen.
+
+## Kommunikation
+
+Brainz bindet mehrere Kommunikationspfade an, je nachdem, welche Kanäle du in deiner Installation aktivierst. Dazu gehören E-Mail, Push-Benachrichtigungen sowie eingehende und ausgehende Webhooks.
+
+### E-Mail
+
+Für ausgehende E-Mails nutzt Brainz SMTP-basierte Zustellung. Typische Provider sind klassische SMTP-Server sowie Dienste wie SendGrid, Postmark oder AWS SES, sofern sie per SMTP angesprochen werden.
+
+Zusätzlich verarbeitet Brainz eingehende E-Mails über eigene Email-Ingest-Pfade. Laut REST-API stehen dafür 9 Routen bereit, während der Mail-Bereich 13 Routen für Versand, Verarbeitung und Verwaltung abdeckt.
+
+### Web Push
+
+Web-Push-Benachrichtigungen werden über VAPID-Schlüssel konfiguriert. Damit kann Brainz Browser- oder Gerätebenachrichtigungen zustellen, ohne einen proprietären Push-Dienst vorauszusetzen.
+
+### Webhooks
+
+Brainz unterstützt sowohl ausgehende als auch eingehende Webhooks. Für die Verwaltung ausgehender Webhooks stehen 8 REST-Routen bereit, und weitere 8 Routen nehmen eingehende Webhook-Aufrufe aus externen Systemen entgegen.
+
+## Edge-Services (Cloudflare Workers)
+
+Cloudflare Workers ergänzen das Backend um spezialisierte Edge-Services. Dazu gehören ein Image CDN, ein RSS Fetcher, Email Ingest und ein Fetch Proxy für ausgelagerte Netzwerkpfade.
+
+Diese Worker laufen als separates Deployment und werden unabhängig vom Kern-Backend betrieben. Die Bereitstellung erfolgt über Wrangler, sodass du Edge-Funktionen getrennt vom Hauptsystem ausrollen und betreiben kannst.
+
+## Graceful Degradation
+
+Brainz bleibt funktionsfähig, auch wenn optionale Integrationen fehlen. Wenn API-Schlüssel nicht gesetzt sind oder ein externer Dienst nicht antwortet, überspringt das System gezielt nur die betroffenen Schritte.
+
+Das betrifft vor allem Enrichment, Web-Suche, einzelne KI-Provider oder Kommunikationswege. Kernfunktionen, Datenhaltung und nicht abhängige Verarbeitungsstrecken bleiben davon unberührt.
+
+<Callout kind="info">
+
+Zusätzliche API-Schlüssel erweitern die automatische Anreicherung von Inhalten. Ohne diese Schlüssel bleibt Brainz funktionsfähig, einzelne Enrichment-Funktionen stehen dann jedoch nicht zur Verfügung.
+
+</Callout>
+
+## Nächste Schritte
+
+<Columns cols={2}>
+  <Card
+    title="Konfiguration"
+    href="/configuration"
+    icon="settings"
+    cta="Alle Umgebungsvariablen"
+  />
+  <Card
+    title="KI-Features"
+    href="/features/ai"
+    icon="zap"
+    cta="KI-System im Detail"
+  />
+  <Card
+    title="Content-System"
+    href="/features/content"
+    icon="database"
+    cta="Anreicherungs-Pipeline"
+  />
+  <Card
+    title="Plugin-System"
+    href="/features/plugins"
+    icon="package"
+    cta="Eigene Integrationen bauen"
+  />
+</Columns>

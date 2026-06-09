@@ -63,6 +63,11 @@
                 "title": "Plugin-System",
                 "path": "features/plugins",
                 "icon": "puzzle"
+              },
+              {
+                "title": "Integrationen & Enrichment",
+                "path": "features/integrations",
+                "icon": "cable"
               }
             ]
           },
