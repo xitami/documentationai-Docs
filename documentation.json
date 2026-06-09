@@ -53,6 +53,11 @@
                 "title": "Content-Typen",
                 "path": "features/content-types",
                 "icon": "list"
+              },
+              {
+                "title": "Content Stream",
+                "path": "features/content-stream",
+                "icon": "activity"
               }
             ]
           },
