@@ -1,58 +1,174 @@
 ---
-title: Quickstart
-description: Minimal steps to customize this sample starter kit.
+title: Schnellstart
+description: Brainz in 5 Minuten lokal starten mit Docker Compose
 ---
-## Overview
+## Überblick
 
-<Callout kind="alert" collapsed="false">
-  This site ships with placeholder content. Use this quickstart to replace it with your real product docs.
+Mit dieser Anleitung bringen Sie Brainz von null auf eine lokal laufende Instanz. Docker Compose startet PostgreSQL 16 mit `pgvector` und `pg_cron`, Redis und den App-Container in einem gemeinsamen Setup.
+
+<Callout kind="info">
+
+**Voraussetzungen**
+
+- Docker und Docker Compose v2+
+- Git
+- Mindestens 4 GB RAM
+- Optional: Node.js 20+ für Bare-Metal-Entwicklung ohne Docker
+
 </Callout>
 
-## 1. Update a page
+## Installation
 
 <Steps>
-  <Step title="Edit introduction" icon="edit" title-type="p">
-    Replace the sample introduction with a concise overview of your product and the key actions you want new users to take first.
+  <Step title="Repository klonen" icon="github" title-type="p">
+
+```bash
+git clone https://github.com/xitami/PostgresBackend.git
+cd PostgresBackend
+```
+
   </Step>
 
-  <Step title="Preview your change" icon="monitor" title-type="p">
-    Use your dashboard board editor to confirm the updated introduction looks and reads as expected.
+  <Step title="Environment konfigurieren" icon="settings" title-type="p">
+
+```bash
+cp .env.example .env
+```
+
+Die wichtigsten Variablen, die Sie setzen müssen:
+
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — Datenbank-Credentials
+- `JWT_SECRET` — Mindestens 32 Zeichen
+- `PORT` — Standard: `3000`
+
+Generieren Sie ein geeignetes Secret zum Beispiel so:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+<Callout kind="alert">
+
+Verwenden Sie in Produktion immer ein kryptographisch sicheres Secret. Teilen Sie es niemals öffentlich.
+
+</Callout>
+
+  </Step>
+
+  <Step title="Docker Compose starten" icon="play-circle" title-type="p">
+
+```bash
+docker compose up --build -d
+```
+
+Der Befehl startet drei Services: PostgreSQL 16 mit `pgvector` und `pg_cron`, Redis 7 und die Brainz-App. Beim ersten Start spielt PostgreSQL die SQL-Dateien aus `./sql/` automatisch ein.
+
+  </Step>
+
+  <Step title="Migrationen ausführen" icon="database" title-type="p">
+
+Führen Sie für nachfolgende Schema-Updates diesen Befehl aus:
+
+```bash
+docker exec postgresbackend-app-1 node scripts/migrate.js
+```
+
+Das Migrations-System verwaltet mehr als 265 SQL-Dateien und verfolgt den Status in `public.schema_migrations`.
+
+  </Step>
+
+  <Step title="Zugriff verifizieren" icon="check-circle" title-type="p">
+
+Brainz läuft unter `http://localhost:3000`. Die GraphQL-API erreichen Sie unter `http://localhost:3000/graphql`.
+
+Wenn alles korrekt gestartet ist, antwortet der Server auf eingehende Requests und die GraphQL-Route ist erreichbar.
+
   </Step>
 </Steps>
 
-## 2. Add a new page
+<Callout kind="tip">
+
+Tipp: Testen Sie die API mit einer einfachen GraphQL-Query:
+
+```graphql
+query {
+  currentUser {
+    id
+    username
+  }
+}
+```
+
+</Callout>
+
+## Entwicklung ohne Docker
+
+Wenn Sie Brainz ohne Container entwickeln, richten Sie die Laufzeitdienste lokal ein und starten die App direkt mit Node.js.
 
 <Steps>
-  <Step title="Add a page" icon="file-text" title-type="p">
-    Create a new `page` by clicking on the + button from the left navigation bar of dashboard. If you are using git, create the .mdx file and add to navigation bar using documentation.json
+  <Step title="Node.js installieren" icon="package" title-type="p">
+
+Installieren Sie Node.js 20 oder neuer, damit die lokalen Skripte und der Entwicklungsserver zuverlässig laufen.
+
+  </Step>
+
+  <Step title="PostgreSQL vorbereiten" icon="database" title-type="p">
+
+Richten Sie PostgreSQL 16 ein und aktivieren Sie die Extensions `pgvector` und `pgcrypto`.
+
+  </Step>
+
+  <Step title="Redis starten" icon="server" title-type="p">
+
+Starten Sie einen lokalen Redis-Server, bevor Sie die App ausführen.
+
+  </Step>
+
+  <Step title="Abhängigkeiten installieren" icon="download" title-type="p">
+
+```bash
+npm install
+```
+
+  </Step>
+
+  <Step title="Migrationen ausführen" icon="database" title-type="p">
+
+```bash
+node scripts/migrate.js
+```
+
+  </Step>
+
+  <Step title="Entwicklungsserver starten" icon="terminal" title-type="p">
+
+```bash
+npm run dev
+```
+
+Der Entwicklungsmodus startet mit `--watch` und lädt Änderungen automatisch neu.
+
   </Step>
 </Steps>
 
-## Example onboarding flow (replace with yours)
+## Häufige Probleme
 
-1. Sign up for an account and verify your email.
+- **Port 3000 belegt**: Setzen Sie `PORT=3001` in `.env`.
+- **Docker hat zu wenig Speicher**: Weisen Sie in Docker Desktop unter Settings → Resources mindestens 4 GB RAM zu.
+- **Migrations-Fehler**: Führen Sie `docker compose down -v` aus und starten Sie das Setup neu, um einen frischen Datenbankzustand zu erhalten.
 
-2. Create your first workspace, project, or environment.
+## Nächste Schritte
 
-3. Add one integration or data source to connect your existing tools.
-
-4. Complete a guided action (for example, run your first job or publish your first resource).
-
-5. Invite a teammate and assign a basic role or permission.
-
-## 3. Connect API Reference (optional)
-
-If you have an API, replace `openapi.yaml` with your real OpenAPI file. If you do not need an API reference, remove that tab either from dashboard or  `documentation.json`.
-
-## Next steps
-
-<Columns cols="2">
-  <Card title="Core Concepts" href="/concepts" icon="layers" horizontal="false">
-    Keep the mental model simple and easy to scan.
+<Columns cols={3}>
+  <Card title="Architektur" href="/architecture" icon="layers" horizontal="false">
+    System-Design verstehen
   </Card>
 
-  <Card title="Authentication" href="/authentication" icon="lock" horizontal="false">
-    Add your real auth flows and security notes.
+  <Card title="Konfiguration" href="/configuration" icon="settings" horizontal="false">
+    Alle Umgebungsvariablen
+  </Card>
+
+  <Card title="GraphQL API" href="/api/graphql" icon="code" horizontal="false">
+    API-Referenz erkunden
   </Card>
 </Columns>
-

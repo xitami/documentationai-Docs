@@ -1,78 +1,108 @@
 ---
-title: Set Up Your Documentation
-description: 'A minimal, editable starting point for your own documentation site.'
+title: Einführung
+description: Brainz — Das PostgreSQL-first Wissensmanagement-System mit KI-Integration, GraphQL-API und MCP-Server
 ---
-## Start here (5–10 minutes)
 
-1. Edit this page so it describes your product and audience.
+## Brainz im Überblick
 
-2. Customize your onboarding flow in the [Quickstart](/quickstart) page.
+Brainz ist ein PostgreSQL-first, mandantenfähiges SaaS-Backend für persönliches Wissensmanagement. Es verbindet einen extrem flexiblen Datenspeicher mit GraphQL, einem eingebauten Content-System und nativer KI-Integration in einer Architektur, die sich selbst hosten lässt, quelloffen ist und nicht an einen einzelnen LLM-Anbieter gebunden bleibt.
 
-3. Delete or rewrite any sections and pages you do not plan to use.
+Wenn Sie Brainz einsetzen, arbeiten Sie nicht mit einer Sammlung lose gekoppelter Einzellösungen. Sie bekommen eine Plattform, die strukturierte Inhalte, semantische Suche, Echtzeit-Synchronisation, Hintergrundprozesse und KI-Workflows auf derselben Datenbasis zusammenführt. Das macht Brainz besonders interessant für Entwickler und Self-Hoster, die volle Kontrolle über Datenmodell, Infrastruktur und Integrationen behalten möchten.
 
-4. Invite a teammate to review the structure and concepts starting from [Core Concepts](/concepts).
+<Callout kind="info">
 
-<Callout kind="alert" collapsed="false">
-  This site ships with placeholder content. Edit the text, links, and examples so they match your product before sharing it with others.
+Brainz ist vergleichbar mit einem flexiblen Backend-as-a-Service auf PostgreSQL-Basis, setzt aber auf GraphQL statt REST, bringt ein universelles Content-System mit und erweitert die Plattform um einen nativen MCP-Server für KI-Clients.
+
 </Callout>
 
-## What you get
+## Kernfunktionen
 
-<Columns cols="3">
-  <Card title="Docs structure" href="/quickstart" icon="book-open" horizontal="false">
-    A clear navigation layout with starter pages you can rename or replace.
+<Columns cols={3}>
+  <Card title="KI-Assistent" icon="brain" horizontal="false">
+    LLM-Chat mit Streaming, semantische Suche, tägliches Briefing und eine Intent Engine für kontextbezogene Aktionen.
   </Card>
 
-  <Card title="Components" href="#try-a-few-components" icon="layout-grid" horizontal="false" target="_self">
-    Prebuilt blocks like Callouts, Steps, Tabs, and Cards to keep pages clean.
+  <Card title="Content-System" icon="database" horizontal="false">
+    Mehr als 30 Content-Typen in einem universellen JSONB-Modell mit automatischer Anreicherung und einheitlicher Speicherung.
   </Card>
 
-  <Card title="API reference hook" href="/authentication" icon="code" horizontal="false">
-    A placeholder `openapi.yaml` you can swap with your real API spec.
-  </Card>
-</Columns>
-
-## Make your first edit
-
-<Steps>
-  <Step title="Rewrite this page" icon="edit" title-type="p">
-    Update the title, description, and sections in `introduction` so they reflect your product and documentation goals.
-  </Step>
-
-  <Step title="Customize Quickstart" icon="zap" title-type="p">
-    Replace the steps in `quickstart` with your real onboarding flow so new readers know exactly how to get started.
-  </Step>
-
-  <Step title="Remove or repurpose samples" icon="trash" title-type="p">
-    Delete unused sample sections and pages, or rewrite them with your own content to keep navigation focused.
-  </Step>
-</Steps>
-
-## Try a few components
-
-You can browse the component gallery in the [Components](/components) page for ready-to-use examples of Cards, Callouts, Steps, Tabs, and more.
-
-## Continue to the rest of the sample
-
-<Columns cols="2">
-  <Card title="Quickstart" href="/quickstart" icon="zap" horizontal="false">
-    See the minimal setup flow.
+  <Card title="GraphQL API" icon="code" horizontal="false">
+    Automatisch über PostGraphile generiert. Sie schreiben keinen separaten Schema-Code und arbeiten direkt auf Ihrer Datenbankstruktur.
   </Card>
 
-  <Card title="Core Concepts" href="/concepts" icon="layers" horizontal="false">
-    Learn how pages, navigation, and components fit together.
+  <Card title="MCP Server" icon="bot" horizontal="false">
+    Mehr als 29 Tools für KI-Clients wie Claude, mit Unterstützung für `stdio`- und HTTP-Transport.
   </Card>
 
-  <Card title="Components" href="/components" icon="code" horizontal="false">
-    A small gallery of built-in components.
+  <Card title="Echtzeit" icon="radio" horizontal="false">
+    PostgreSQL `LISTEN/NOTIFY` wird auf WebSockets abgebildet und mit Yjs für CRDT-basierte Kollaboration kombiniert.
   </Card>
 
-  <Card title="Authentication" href="/authentication" icon="lock" horizontal="false">
-    Example layout for an auth guide.
-  </Card>
-
-  <Card title="Help Center" href="/help-center" icon="help-circle" horizontal="false">
-    Starter FAQ, guides, and troubleshooting templates.
+  <Card title="Multi-Plattform" icon="smartphone" horizontal="false">
+    Eine gemeinsame Plattform für Web SPA, Mobile PWA, iOS-App und Chrome Extension.
   </Card>
 </Columns>
 
+## Architektur-Überblick
+
+Brainz trennt Client, API, Persistenz, Hintergrundverarbeitung und externe KI-Dienste klar voneinander. Gleichzeitig bleibt der Kern überschaubar: PostgreSQL ist das System of Record, während API, Jobs, Storage und KI-Provider gezielt darum herum aufgebaut sind.
+
+```text
+Clients
+├─ Web SPA
+├─ Mobile PWA
+├─ iOS App
+├─ Chrome Extension
+└─ MCP Clients
+
+API Layer
+├─ Express
+├─ PostGraphile
+└─ WebSocket
+
+Daten- und Service-Layer
+├─ PostgreSQL 16
+│  ├─ RLS
+│  ├─ pgvector
+│  ├─ pgcrypto
+│  └─ tsvector
+├─ BullMQ / Redis
+│  └─ Background Jobs
+├─ S3 Storage
+│  └─ MinIO / R2
+└─ AI Providers
+   ├─ OpenAI
+   ├─ Anthropic
+   └─ Ollama
+```
+
+Diese Aufteilung hilft beim Self-Hosting, weil jede Schicht unabhängig skaliert und ersetzt werden kann. Wenn Sie lokale Modelle bevorzugen, binden Sie Ollama an. Wenn Sie objektbasierten Storage bereits betreiben, verwenden Sie einen S3-kompatiblen Dienst wie MinIO oder R2.
+
+## Tech-Stack
+
+Die Plattform basiert auf einem bewusst pragmatischen Stack, der sich gut in bestehende Docker- und PostgreSQL-Umgebungen integrieren lässt.
+
+- **Node.js 20+ / Express** für API, Middleware und serverseitige Integrationen
+- **PostgreSQL 16** mit `pgvector`, `pgcrypto` und Row Level Security
+- **PostGraphile** für die automatische GraphQL-Schicht über dem Datenmodell
+- **Better Auth** für JWT, OAuth und Zwei-Faktor-Authentifizierung
+- **BullMQ + Redis** für Warteschlangen, Worker und Hintergrundverarbeitung
+- **Yjs** für CRDT-basierte Echtzeit-Kollaboration
+- **S3-kompatibler Storage** für Dateien, Medien und Anhänge
+- **Docker / Docker Compose** für lokale Entwicklung und Deployment
+
+## Nächste Schritte
+
+<Columns cols={3}>
+  <Card title="Schnellstart" href="/quickstart" icon="zap" horizontal="false">
+    In 5 Minuten lokal starten
+  </Card>
+
+  <Card title="Architektur" href="/architecture" icon="layers" horizontal="false">
+    System-Design und Patterns
+  </Card>
+
+  <Card title="KI-Features" href="/features/ai" icon="brain" horizontal="false">
+    Embeddings, Vision, Briefing
+  </Card>
+</Columns>
