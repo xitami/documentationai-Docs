@@ -1,0 +1,201 @@
+---
+title: REST API
+description: 533 Endpunkte mit interaktiver OpenAPI-Dokumentation, Zod-validiert und code-first dokumentiert
+---
+
+## Überblick
+
+Die Brainz REST API umfasst 533 Endpunkte in 79 fachlichen Gruppen. Die Dokumentation entsteht code-first direkt aus den Server-Routen und bleibt dadurch mit der laufenden Implementierung synchron.
+
+Unter der Haube erzeugt ein eigenes OpenAPI-Registry-System aus Zod-Schemas eine OpenAPI-3.1-Spezifikation zur Laufzeit. Routen dokumentieren sich selbst über ein gemeinsames `registerRoute()`-Muster, das Methode, Pfad, Tags, Request-Schema und Response-Schema an einer Stelle beschreibt.
+
+## Live-Dokumentation
+
+Zwei Endpunkte stellen die REST-Dokumentation direkt bereit: eine maschinenlesbare Spezifikation und eine interaktive UI für die manuelle Exploration. Beide Quellen werden aus denselben Route-Definitionen erzeugt.
+
+<Callout kind="tip">
+
+`/api/docs` ist der schnellste Einstieg, wenn du die gesamte API interaktiv durchsuchen, Requests ausprobieren und Beispielaufrufe direkt vergleichen willst.
+
+</Callout>
+
+<ParamField path="/api/openapi.json" param-type="GET" required="true" show-location="false">
+Maschinenlesbare OpenAPI-3.1-Spezifikation der kompletten REST API. Verwende diesen Endpunkt für Code-Generatoren, Validierung, Client-SDK-Workflows oder externe API-Tools.
+</ParamField>
+
+<ParamField path="/api/docs" param-type="GET" required="true" show-location="false">
+Interaktive API-Referenz auf Basis von Scalar. Die Oberfläche zeigt Endpunkte, Parameter, Schemas und Beispielaufrufe und unterstützt Try-it-out direkt im Browser.
+</ParamField>
+
+Die folgenden Beispiele rufen beide Dokumentationsendpunkte direkt per `curl` ab.
+
+<CodeGroup tabs="OpenAPI JSON,Scalar UI">
+
+```bash
+curl -i https://brainz.ai/api/openapi.json
+```
+
+```bash
+curl -i https://brainz.ai/api/docs
+```
+
+</CodeGroup>
+
+## Authentifizierung
+
+Die REST API verwendet dieselbe Authentifizierung wie die GraphQL API: geschützte Endpunkte erwarten ein Bearer-JWT im `Authorization`-Header. Details zu Token-Erzeugung, Ablauf und Header-Format findest du unter [Authentifizierung](/authentication).
+
+## Endpunkt-Gruppen
+
+Die API ist nach fachlichen Tags organisiert. Diese Tags strukturieren auch die OpenAPI-Spezifikation und die interaktive Referenz unter `/api/docs`.
+
+### KI & Assistenten
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| AI Assistant | 4 | Endpunkte für Assistenzfunktionen und direkte KI-Interaktionen. |
+| AI Conversations | 6 | Verwaltet Gesprächsverläufe, Kontexte und dialogbezogene Operationen. |
+| AI Settings | 20 | Konfiguriert Modell-, Prompt- und KI-bezogene Systemeinstellungen. |
+| hAIde | 7 | Spezialisierte KI-Endpunkte für hAIde-spezifische Workflows. |
+
+### Content & Assets
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| Assets | 52 | Verwaltet hochgeladene, generierte und referenzierte Assets über den gesamten Stack. |
+| Drop | 16 | Endpunkte für Drop-basierte Übergabe-, Sammel- oder Upload-Workflows. |
+| Files | 8 | Arbeitet mit Dateien, Dateimetadaten und Dateizugriff. |
+| Items | 1 | Stellt einen kompakten Einstiegspunkt für Item-bezogene Operationen bereit. |
+| Content Conversion | 10 | Konvertiert Inhalte zwischen Formaten und verarbeitet Transformationsaufgaben. |
+| Document Enhance | 1 | Führt dokumentbezogene Anreicherung oder Optimierung aus. |
+| Import | 1 | Startet oder verwaltet Importvorgänge aus externen Quellen. |
+| Ingestion | 2 | Nimmt Inhalte für nachgelagerte Verarbeitung und Indexierung auf. |
+
+### Intelligence
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| Insights | 22 | Liefert abgeleitete Erkenntnisse, Auswertungen und strukturierte Analysen. |
+| Predictive | 7 | Stellt Vorhersage- und Prognosefunktionen bereit. |
+| Briefing | 5 | Erzeugt kompakte Briefings und zusammengefasste Informationsansichten. |
+| Tag Intelligence | 9 | Analysiert, bewertet oder ergänzt Tags mit semantischen Informationen. |
+| Thought Clusters | 8 | Gruppiert Inhalte oder Signale zu thematischen Clustern. |
+| Knowledge Entities | 22 | Arbeitet mit erkannten Wissenseinheiten und deren Beziehungen. |
+| Search | 10 | Bietet Suchendpunkte für Inhalte, Entitäten und Indexdaten. |
+| Search Analytics | 20 | Liefert Metriken und Auswertungen für Suchverhalten und Suchqualität. |
+
+### Kollaboration
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| Sharing | 7 | Steuert Freigaben, Berechtigungen und geteilte Ressourcen. |
+| Collab | 10 | Unterstützt kollaborative Arbeitsabläufe und gemeinsame Bearbeitung. |
+| Teams | 9 | Verwaltet Teams, Mitgliedschaften und teambezogene Einstellungen. |
+| Spaces | 6 | Organisiert Inhalte und Zugriffe in Spaces. |
+| Chat | 6 | Stellt chatbezogene Funktionen und Nachrichtenoperationen bereit. |
+| Mentions | 4 | Verarbeitet Erwähnungen und zugehörige Benachrichtigungslogik. |
+| Presence | 4 | Liefert Anwesenheits- und Aktivitätsstatus. |
+| Notifications | 4 | Verwaltet interne Benachrichtigungen und deren Zustellung. |
+| Push Notifications | 5 | Sendet und konfiguriert Push-Benachrichtigungen. |
+
+### Medien & Lifestyle
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| Media Search | 5 | Sucht nach Medieninhalten und zugehörigen Metadaten. |
+| Media Upgrade | 2 | Führt medienbezogene Upgrades oder Nachverarbeitung aus. |
+| Recipe Generator | 6 | Erzeugt Rezepte und strukturierte Kochvorschläge. |
+| Memes | 5 | Verwaltet Meme-Erzeugung und meme-spezifische Inhalte. |
+| Travel | 12 | Deckt reisebezogene Daten und Reise-Workflows ab. |
+| Transit | 5 | Liefert Transit- und Transportinformationen. |
+| Weather | 4 | Stellt Wetterdaten und wetterbezogene Abfragen bereit. |
+| Calendar | 14 | Verwaltet Kalenderdaten, Termine und zeitbezogene Operationen. |
+| Shopping Picker | 3 | Unterstützt Auswahl- und Empfehlungslogik für Shopping-Szenarien. |
+| Product Registry | 7 | Verwaltet Produktdaten und registrierte Produktinformationen. |
+
+### Automation & Agents
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| Agents | 20 | Verwaltet Agenten, deren Konfiguration und Ausführung. |
+| Brainflows | 10 | Definiert und steuert automatisierte Brainflow-Workflows. |
+| Cleanup Agent | 5 | Führt Bereinigungs- und Aufräumoperationen über Agentenlogik aus. |
+| Plugin Registry | 7 | Registriert und verwaltet verfügbare Plugins. |
+| Plugins | 5 | Nutzt, konfiguriert oder steuert Plugin-Funktionen zur Laufzeit. |
+
+### Integration & Webhooks
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| Webhooks | 8 | Verwaltet ausgehende Webhooks und deren Konfiguration. |
+| Incoming Webhooks | 8 | Nimmt eingehende Webhook-Aufrufe aus externen Systemen entgegen. |
+| Email Ingest | 9 | Verarbeitet eingehende E-Mails für Weiterleitung oder Analyse. |
+| Mail | 13 | Deckt Versand, Verarbeitung und Verwaltung von Mail-Funktionen ab. |
+| Shared Content | 20 | Arbeitet mit geteilten Inhalten über System- und Integrationsgrenzen hinweg. |
+
+### System & Admin
+
+| Gruppe | Routen | Beschreibung |
+| --- | ---: | --- |
+| Admin | 9 | Administrative Endpunkte für Systemsteuerung und interne Verwaltung. |
+| System | 6 | Bietet systemnahe Funktionen und Statusinformationen. |
+| Auth | 6 | Verwaltet Authentifizierungs- und Login-bezogene Endpunkte. |
+| Profile | 6 | Arbeitet mit Benutzerprofilen und Profilmetadaten. |
+| Avatar | 3 | Verwaltet Avatar-bezogene Upload- und Abruffunktionen. |
+| Public | 9 | Stellt öffentlich erreichbare Endpunkte ohne geschützten Fachkontext bereit. |
+| Resolve | 5 | Löst Referenzen, Identitäten oder Verknüpfungen systemweit auf. |
+| Sync | 1 | Führt Synchronisationsaufgaben zwischen Systemteilen aus. |
+| Tracking | 7 | Erfasst Tracking- und Ereignisdaten. |
+| Timeline | 5 | Liefert zeitliche Ansichten und Timeline-bezogene Daten. |
+
+## Code-First Dokumentation
+
+Die REST-Dokumentation wird nicht separat gepflegt. Server-Dateien registrieren ihre Endpunkte direkt im Code, und die OpenAPI-Spezifikation wird daraus automatisch aufgebaut.
+
+Insgesamt dokumentieren 93 Server-Dateien ihre Routen selbst. Das zugrunde liegende Muster verbindet HTTP-Metadaten mit Zod-Schemas für Request und Response, sodass Validierung und Dokumentation aus derselben Definition entstehen.
+
+```javascript
+registerRoute({
+  method: "get",
+  path: "/api/assets",
+  tags: ["Assets"],
+  summary: "Listet Assets",
+  body: assetsQuerySchema,
+  response: assetsListResponseSchema
+})
+```
+
+Dieses Muster reduziert Abweichungen zwischen Implementierung und Dokumentation. Wenn sich ein Schema ändert, aktualisieren sich Spezifikation und UI auf derselben Grundlage.
+
+## Lokale Spec generieren
+
+Den Markdown-Index der API kannst du lokal aus der registrierten OpenAPI-Beschreibung erzeugen.
+
+```bash
+npm run docs:api
+```
+
+Der Befehl verwendet das vorhandene Generierungsskript und erstellt den API-Index aus der aktuellen Routenregistrierung. So kannst du Änderungen an Tags, Routen oder Schemas lokal prüfen, bevor du sie veröffentlichst.
+
+## Nächste Schritte
+
+<Columns cols={3}>
+  <Card
+    title="GraphQL API"
+    href="/api/graphql"
+    icon="code"
+    cta="Zur GraphQL-Referenz"
+  />
+  <Card
+    title="MCP Server"
+    href="/mcp-server"
+    icon="terminal"
+    cta="Server-Dokumentation öffnen"
+  />
+  <Card
+    title="Authentifizierung"
+    href="/authentication"
+    icon="lock"
+    cta="JWT-Setup prüfen"
+  />
+</Columns>

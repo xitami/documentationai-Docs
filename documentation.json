@@ -98,6 +98,11 @@
                 "icon": "lock"
               },
               {
+                "title": "REST API",
+                "path": "api/rest",
+                "icon": "globe"
+              },
+              {
                 "title": "GraphQL API",
                 "path": "api/graphql",
                 "icon": "git-branch"
