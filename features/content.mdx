@@ -40,20 +40,28 @@ Die Tabelle `app_public.content` ist das zentrale Persistenzmodell für alle Inh
 
 ```sql
 CREATE TABLE app_public.content (
-  id          bigint PRIMARY KEY,
-  uuid        uuid UNIQUE NOT NULL,
-  tenant_id   integer NOT NULL,
-  kind        text CHECK (kind IN ('item', 'document', 'file')),
-  content_type text,
-  title       text,
-  body        text,
-  data        jsonb,
-  tags        text[],
+  id              bigint PRIMARY KEY,
+  uuid            uuid UNIQUE NOT NULL,
+  tenant_id       integer NOT NULL,
+  owner_id        integer NOT NULL,
+  kind            text CHECK (kind IN ('item', 'document', 'file')),
+  content_type    text,
+  title           text,
+  body            text,
+  data            jsonb,
+  filename        text,
+  mime_type        text,
+  size_bytes       bigint,
+  storage_key     text,
+  tags            text[],
   structured_data jsonb,
-  llm_context jsonb,
-  status      content_status DEFAULT 'draft',
-  created_at  timestamptz DEFAULT now(),
-  updated_at  timestamptz DEFAULT now()
+  llm_context     jsonb,
+  status          content_status DEFAULT 'draft',
+  is_public       boolean DEFAULT false,
+  ai_excluded     boolean DEFAULT false,
+  pinned          boolean DEFAULT false,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
 );
 ```
 

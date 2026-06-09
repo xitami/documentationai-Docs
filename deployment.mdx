@@ -19,7 +19,7 @@ Für Self-Hosting ist **Docker Compose** der empfohlene Standardpfad. Das Setup 
 
 Vor dem Deployment sollten diese Basisdienste und Rahmenbedingungen vorhanden sein:
 
-- **PostgreSQL 16+** mit den Extensions `pgvector`, `pgcrypto` und `uuid-ossp`
+- **PostgreSQL 16+** mit den Extensions `vector` (pgvector), `pgcrypto` und `uuid-ossp`
 - **Redis 7+**
 - **S3-kompatibler Objektspeicher** wie MinIO, Cloudflare R2 oder AWS S3
 - **Mindestens 2 GB RAM**, empfohlen sind 4 GB
@@ -155,7 +155,7 @@ Ordnen Sie dem Service Ihre Produktionsdomain zu und aktivieren Sie TLS über Ra
 
 <Callout kind="info">
 
-Railway erkennt das Dockerfile automatisch. Stellen Sie sicher, dass `pgvector` als Extension im PostgreSQL-Add-on aktiviert ist, bevor Sie Migrationen oder suchbezogene Funktionen produktiv nutzen.
+Railway erkennt das Dockerfile automatisch. Stellen Sie sicher, dass die `vector`-Extension (pgvector) im PostgreSQL-Add-on aktiviert ist, bevor Sie Migrationen oder suchbezogene Funktionen produktiv nutzen.
 
 </Callout>
 
@@ -175,7 +175,7 @@ Installieren Sie Node.js 20 oder neuer direkt auf dem Host. Verifizieren Sie dan
 Erstellen Sie die Datenbank und aktivieren Sie die benötigten Extensions vor dem ersten Anwendungsstart.
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS pgvector;
+CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 ```

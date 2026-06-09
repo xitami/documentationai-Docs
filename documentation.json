@@ -58,6 +58,11 @@
                 "title": "Content Stream",
                 "path": "features/content-stream",
                 "icon": "activity"
+              },
+              {
+                "title": "Plugin-System",
+                "path": "features/plugins",
+                "icon": "puzzle"
               }
             ]
           },
@@ -107,5 +112,6 @@
         ]
       }
     ]
-  }
+  },
+  "template": "atlas"
 }

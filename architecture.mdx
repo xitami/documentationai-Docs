@@ -42,9 +42,10 @@ Das folgende Diagramm zeigt die wichtigsten Schichten, Laufzeitkomponenten und D
 ┌──────────────────────────── DATA-LAYER ────────────────────────────────┐
 │ PostgreSQL 16                                                          │
 │ ├─ app_public                                                          │
-│ │  ├─ items                                                            │
-│ │  ├─ documents                                                        │
-│ │  ├─ files                                                            │
+│ │  ├─ content (unified table)                                          │
+│ │  ├─ items (compatibility view)                                       │
+│ │  ├─ documents (compatibility view)                                   │
+│ │  ├─ files (compatibility view)                                       │
 │ │  ├─ collections                                                      │
 │ │  ├─ teams                                                            │
 │ │  ├─ tags                                                             │
@@ -144,7 +145,7 @@ Die Datenbankstruktur trennt öffentliche API-Flächen, interne Systemdaten und 
 
 `app_public` bildet die externe API-Oberfläche. PostGraphile introspektiert dieses Schema und erzeugt daraus die GraphQL-Struktur für Tabellen, Relationen und CRUD-Operationen.
 
-Typische Objekte in `app_public` sind `items`, `documents`, `files`, `collections`, `teams`, `tags`, `notifications` und `knowledge_entities`. Alles, was hier sichtbar ist, muss als Teil der öffentlichen Daten- und Berechtigungslogik verstanden werden.
+Die zentrale Tabelle ist `content`, in der alle Inhalte vereinheitlicht gespeichert werden. Die ehemals separaten Tabellen `items`, `documents` und `files` existieren als Kompatibilitäts-Views mit INSTEAD-OF Triggers. Weitere Objekte in `app_public` sind `collections`, `teams`, `tags`, `notifications` und `knowledge_entities`. Alles, was hier sichtbar ist, muss als Teil der öffentlichen Daten- und Berechtigungslogik verstanden werden.
 
 ### `app_private`
 
@@ -162,7 +163,7 @@ Das Schema ist ausdrücklich kein Teil der externen API-Oberfläche. Es unterst�
 
 Das Schema wird über einen eigenen Migrations-Runner in `scripts/migrate.js` verwaltet. Mehr als 265 Migrationen werden in `public.schema_migrations` nachverfolgt, sodass Datenbankzustand und Deployments reproduzierbar bleiben.
 
-Für semantische Suche und KI-nahe Funktionen verwendet Brainz `pgvector`. Full-Text-Suche basiert auf `tsvector`-Spalten mit GIN-Indizes. Erweiterungen wie `pgvector`, `pgcrypto`, `uuid-ossp` und `pg_cron` werden automatisch installiert, damit die Datenbank alle benötigten Plattformfunktionen direkt bereitstellt.
+Für semantische Suche und KI-nahe Funktionen verwendet Brainz die `vector`-Extension (pgvector). Full-Text-Suche basiert auf `tsvector`-Spalten mit GIN-Indizes. Erweiterungen wie `vector`, `pgcrypto`, `uuid-ossp` und `pg_cron` werden automatisch installiert, damit die Datenbank alle benötigten Plattformfunktionen direkt bereitstellt.
 
 ## Tech-Stack
 
