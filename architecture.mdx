@@ -1,0 +1,194 @@
+---
+title: Architektur
+description: Systemarchitektur, Design-Patterns und technologische Grundlagen von Brainz
+---
+
+## Überblick
+
+Brainz folgt einer PostgreSQL-first-Architektur. Kritische Geschäftslogik liegt direkt in der Datenbank, einschließlich RLS-Policies, SQL-Funktionen und Triggern für Such- und Integritätslogik. PostGraphile introspektiert das Schema `app_public` und erzeugt daraus die GraphQL-API automatisch, während Multi-Tenancy auf Datenbankebene über Row-Level Security durchgesetzt wird.
+
+<Callout kind="info">
+
+Schemaänderungen propagieren direkt in die API: Wenn sich Tabellen, Views oder Funktionen in `app_public` ändern, ändert sich die von PostGraphile erzeugte GraphQL-Oberfläche automatisch mit. Brainz benötigt dafür keine manuell gepflegten GraphQL-Resolver.
+
+</Callout>
+
+## Systemdiagramm
+
+Das folgende Diagramm zeigt die wichtigsten Schichten, Laufzeitkomponenten und Datenflüsse in Brainz.
+
+```text
+┌──────────────────────────────── CLIENTS ────────────────────────────────┐
+│ Web SPA │ Mobile PWA │ iOS App via Capacitor │ Chrome Extension │ MCP   │
+│ Clients wie Claude und andere Tool-Consumer                             │
+└──────────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 │ HTTP / GraphQL / WebSocket / REST
+                                 ▼
+┌──────────────────────────────── API-LAYER ──────────────────────────────┐
+│ Express HTTP Server                                                     │
+│ ├─ PostGraphile                                                         │
+│ │  └─ Auto-generierte GraphQL CRUD API aus Schema app_public            │
+│ ├─ REST Endpoints                                                       │
+│ │  ├─ Files                                                             │
+│ │  ├─ Webhooks                                                          │
+│ │  └─ AI                                                                │
+│ └─ WebSocket Realtime Bridge                                            │
+│    └─ server/realtime.js                                                │
+└──────────────────────────────────────────────────────────────────────────┘
+                 │                         │                      │
+                 │ SQL / pgSettings        │ LISTEN/NOTIFY       │ Job Dispatch
+                 ▼                         ▼                      ▼
+┌──────────────────────────── DATA-LAYER ────────────────────────────────┐
+│ PostgreSQL 16                                                          │
+│ ├─ app_public                                                          │
+│ │  ├─ items                                                            │
+│ │  ├─ documents                                                        │
+│ │  ├─ files                                                            │
+│ │  ├─ collections                                                      │
+│ │  ├─ teams                                                            │
+│ │  ├─ tags                                                             │
+│ │  ├─ notifications                                                    │
+│ │  └─ knowledge_entities                                               │
+│ ├─ app_private                                                         │
+│ │  ├─ Passwort-Hashes via pgcrypto                                     │
+│ │  ├─ Tokens                                                           │
+│ │  └─ Audit- und interne Systemdaten                                   │
+│ ├─ app_hidden                                                          │
+│ │  └─ temporäre und interne Zwischendaten                              │
+│ ├─ RLS Policies für Tenant-Isolation                                   │
+│ ├─ tsvector für Full-Text-Suche                                        │
+│ ├─ pgvector für Embeddings und Similarity Search                       │
+│ ├─ pgcrypto für Auth und Geheimnisse                                   │
+│ ├─ uuid-ossp                                                           │
+│ ├─ pg_cron                                                             │
+│ └─ public.schema_migrations                                            │
+└──────────────────────────────────────────────────────────────────────────┘
+                 │                         │                      │
+                 │ Datei-Metadaten         │ Events               │ Async Work
+                 ▼                         ▼                      ▼
+┌──────────────────────────── STORAGE-LAYER ─────────────────────────────┐
+│ S3-kompatibler Storage                                                  │
+│ MinIO │ Cloudflare R2 │ AWS S3                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────── PROCESSING-LAYER ────────────────────────────┐
+│ BullMQ Workers                                                          │
+│ ├─ Enrichment                                                           │
+│ ├─ Embeddings                                                           │
+│ └─ Notifications                                                        │
+│                                                                         │
+│ Scheduler                                                               │
+│ ├─ Cron Jobs                                                            │
+│ └─ Feed Fetcher                                                         │
+└──────────────────────────────────────────────────────────────────────────┘
+                 │
+                 │ Provider Routing / Budget / Cost Tracking
+                 ▼
+┌────────────────────────────── AI-LAYER ────────────────────────────────┐
+│ AI Service Registry                                                     │
+│ ├─ OpenAI                                                               │
+│ ├─ Anthropic                                                            │
+│ ├─ Ollama                                                               │
+│ └─ Cloudflare AI Gateway                                                │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────── EDGE-LAYER ──────────────────────────────┐
+│ Cloudflare Workers                                                      │
+│ ├─ Image CDN                                                            │
+│ ├─ RSS Fetcher                                                          │
+│ ├─ Email Ingest                                                         │
+│ └─ Fetch Proxy                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+Wesentliche Datenflüsse
+1. Clients sprechen Express über GraphQL, REST und WebSocket an.
+2. PostGraphile liest `app_public` und führt Datenzugriffe direkt gegen PostgreSQL aus.
+3. PostgreSQL publiziert Änderungen über LISTEN/NOTIFY an die Realtime Bridge.
+4. Hintergrundaufgaben werden an BullMQ delegiert.
+5. KI-Aufgaben laufen über das AI Service Registry zu konfigurierbaren Providern.
+6. Dateien werden in S3-kompatiblem Storage gespeichert, Edge-Services übernehmen CDN- und Ingestion-Aufgaben.
+```
+
+## Design-Prinzipien
+
+### PostgreSQL-First
+
+Brainz legt alle kritischen Regeln so nah wie möglich an die Daten. Dazu gehören SQL-Funktionen mit `SECURITY DEFINER`, Trigger für Suchindex-Updates und Policies für Zugriffskontrolle. Die Datenbank ist damit nicht nur Speicher, sondern der zentrale Ort für Integrität, Autorisierung und Geschäftslogik.
+
+PostGraphile introspektiert das Schema `app_public` und generiert daraus die vollständige GraphQL-CRUD-API. Brainz benötigt dafür keinen separaten Resolver-Layer für Standardoperationen. Die Folge ist bewusst direkt: Schemaänderung bedeutet API-Änderung.
+
+### Multi-Tenancy via RLS
+
+Mandantentrennung wird in Brainz nicht im Anwendungscode nachgebildet, sondern in PostgreSQL erzwungen. Jede relevante Tabelle trägt ein `tenant_id`, und der aktuelle Benutzer- sowie Tenant-Kontext wird über JWT-Claims und `pgSettings` in die Datenbanksitzung übergeben.
+
+RLS-Policies filtern dadurch alle Abfragen automatisch. Zusätzliche Filterlogik im API- oder Service-Layer ist für die Isolation nicht erforderlich. Funktionen wie `current_user_id()` und `current_tenant_id()` liefern den Kontext, auf dessen Basis Policies Entscheidungen treffen.
+
+### Event-Driven
+
+Brainz verwendet PostgreSQL nicht nur als Datenbank, sondern auch als Event-Quelle. Änderungen werden über LISTEN/NOTIFY-Kanäle an die WebSocket-Bridge weitergegeben, damit Clients Realtime-Updates ohne Polling erhalten.
+
+Zeitintensive oder nicht-kritische Arbeit wird in asynchrone Jobs ausgelagert. BullMQ verarbeitet Hintergrundaufgaben wie Content-Enrichment, Embedding-Erzeugung und Benachrichtigungen. Dadurch bleiben API-Antwortzeiten kurz und interaktive Anfragen blockieren nicht auf nachgelagerte Verarbeitung.
+
+### Provider-Agnostic AI
+
+KI-Funktionen sind nicht fest an einen einzelnen Anbieter gekoppelt. Ein AI Service Registry übernimmt das Routing von Aufgaben wie Embeddings, Chat, Vision oder Audio an den jeweils konfigurierten Provider.
+
+Diese Entkopplung erlaubt Providerwechsel ohne Änderungen an aufrufendem Fachcode. Gleichzeitig werden Kosten und Budgets zentral erfasst, sodass Modelle pro Aufgabentyp austauschbar bleiben, ohne die Systemarchitektur zu verändern.
+
+## Datenbank-Architektur
+
+Die Datenbankstruktur trennt öffentliche API-Flächen, interne Systemdaten und temporäre Arbeitsdaten bewusst in verschiedene Schemas. Diese Aufteilung reduziert das Risiko unbeabsichtigter Exponierung und macht klar, welche Teile des Modells in die API eingehen.
+
+### `app_public`
+
+`app_public` bildet die externe API-Oberfläche. PostGraphile introspektiert dieses Schema und erzeugt daraus die GraphQL-Struktur für Tabellen, Relationen und CRUD-Operationen.
+
+Typische Objekte in `app_public` sind `items`, `documents`, `files`, `collections`, `teams`, `tags`, `notifications` und `knowledge_entities`. Alles, was hier sichtbar ist, muss als Teil der öffentlichen Daten- und Berechtigungslogik verstanden werden.
+
+### `app_private`
+
+`app_private` enthält interne Tabellen, die nicht über die API exponiert werden. Dazu gehören sensible oder rein systeminterne Daten wie Passwort-Hashes über `pgcrypto`, interne Tokens und Audit-Daten.
+
+Diese Trennung verhindert, dass sicherheitskritische Strukturen versehentlich Teil der generierten API werden. Gleichzeitig bleibt Authentifizierungs- und Betriebslogik nah an den Daten, ohne die öffentliche Oberfläche zu vergrößern.
+
+### `app_hidden`
+
+`app_hidden` dient als Bereich für Zwischenstände und temporäre Daten. Dazu gehören interne Hilfsstrukturen und Metadaten, die bei Hintergrundverarbeitung oder Übergabeschritten entstehen können.
+
+Das Schema ist ausdrücklich kein Teil der externen API-Oberfläche. Es unterstützt Prozesse, die für den Betrieb notwendig sind, aber keinen stabilen Vertragscharakter gegenüber Clients haben.
+
+### Migrationen und Erweiterungen
+
+Das Schema wird über einen eigenen Migrations-Runner in `scripts/migrate.js` verwaltet. Mehr als 265 Migrationen werden in `public.schema_migrations` nachverfolgt, sodass Datenbankzustand und Deployments reproduzierbar bleiben.
+
+Für semantische Suche und KI-nahe Funktionen verwendet Brainz `pgvector`. Full-Text-Suche basiert auf `tsvector`-Spalten mit GIN-Indizes. Erweiterungen wie `pgvector`, `pgcrypto`, `uuid-ossp` und `pg_cron` werden automatisch installiert, damit die Datenbank alle benötigten Plattformfunktionen direkt bereitstellt.
+
+## Tech-Stack
+
+| Komponente | Technologie | Zweck |
+| --- | --- | --- |
+| Runtime | Node.js 20+ | Server-Laufzeitumgebung |
+| HTTP | Express.js | API-Server, Middleware, REST-Routen |
+| GraphQL | PostGraphile | Auto-generierte API aus Schema |
+| Auth | Better Auth + JWT + pgcrypto | Authentifizierung und Session-Management |
+| Queue | BullMQ + Redis 7 | Hintergrundverarbeitung und Caching |
+| Realtime | WebSocket + LISTEN/NOTIFY | Echtzeit-Events an Clients |
+| Collaboration | Yjs | CRDT-basierte Dokumentbearbeitung |
+| Storage | S3-kompatibel, MinIO oder R2 | Dateien und Medien |
+| AI | Multi-Provider, OpenAI, Anthropic, Ollama | KI-Funktionen |
+| Edge | Cloudflare Workers | CDN, RSS, E-Mail-Ingestion |
+
+## Nächste Schritte
+
+<Columns cols={3}>
+  <Card title="Authentifizierung" href="/authentication" icon="lock">
+  Auth-Flow und RLS
+  </Card>
+  <Card title="GraphQL API" href="/api/graphql" icon="code">
+  Automatisch generierte API
+  </Card>
+  <Card title="KI-Features" href="/features/ai" icon="brain">
+  Embeddings und Assistenten
+  </Card>
+</Columns>
