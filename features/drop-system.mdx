@@ -1,0 +1,241 @@
+---
+title: Drop-System
+description: Zentraler Ingestion-Endpunkt für alle Brainz-Clients, inklusive Eingabeformaten, Erkennungslogik, Parametern und Antwortstruktur
+---
+
+## Überblick
+
+`POST /api/drop` ist der zentrale Ingestion-Endpunkt von Brainz. Jeder Client speichert Inhalte über denselben Pfad, darunter Web-SPA, Mobile-PWA, iOS-App und Chrome-Extension.
+
+Drop akzeptiert drei Eingabeformen:
+
+- **Text** — wird als Note, Aufgabe, Idee oder anderer erkannter Typ gespeichert
+- **URL** — auch ohne `https://`; wird als Bookmark mit Vorschau und optionaler Artikel-Extraktion verarbeitet
+- **Datei** — wird als Datei-Inhalt gespeichert und bei unterstützten Formaten zusätzlich mit Vision- oder OCR-Daten angereichert
+
+<Callout kind="info">
+
+Drop erfasst nur die Rohdaten und antwortet sofort. Typ-Erkennung über die einfachen Signale hinaus, Embeddings, Tags, Artikel-Extraktion und Thumbnails laufen anschließend asynchron über die Anreicherungs-Pipeline. Dadurch bleibt die Erfassung schnell, auch wenn externe APIs beteiligt sind.
+
+</Callout>
+
+## Anfrageformate
+
+`POST /api/drop` unterstützt JSON für Text und URLs sowie Multipart für Datei-Uploads. Beide Formate verwenden denselben Parametersatz.
+
+| Format | Content-Type | Verwendung |
+| --- | --- | --- |
+| JSON | `application/json` | Text und URLs |
+| Multipart | `multipart/form-data` | Datei-Uploads mit Feldname `file`; weitere Parameter als Form-Felder |
+
+Bei Multipart-Anfragen werden alle Nicht-Datei-Parameter als normale Form-Felder übertragen. Die maximale Dateigröße beträgt **50 MB**.
+
+<CodeGroup tabs="Text,URL,Datei">
+
+```bash
+curl -X POST "https://api.brainz.ai/api/drop" \
+  -H "Authorization: Bearer brainz_example_9xmk7q2r" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Idee: Nexus als GraphRAG-Quelle nutzen",
+    "status": "active"
+  }'
+```
+
+```bash
+curl -X POST "https://api.brainz.ai/api/drop" \
+  -H "Authorization: Bearer brainz_example_9xmk7q2r" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "https://example.com/artikel",
+    "tags": "[\"research\"]"
+  }'
+```
+
+```bash
+curl -X POST "https://api.brainz.ai/api/drop" \
+  -H "Authorization: Bearer brainz_example_9xmk7q2r" \
+  -F "file=@screenshot.png" \
+  -F "title=Screenshot: Beispielseite" \
+  -F "emit_card=1"
+```
+
+</CodeGroup>
+
+## Erkennungs-Logik
+
+Drop verzweigt den Verarbeitungsweg anhand der Eingabe. Wenn Sie `content_type` explizit setzen, überschreibt dieser Wert die automatische Erkennung.
+
+<Steps>
+  <Step title="Datei vorhanden?" icon="file" title-type="h3">
+
+  Wenn ein `file` mitgesendet wird, verwendet Drop den Datei-Pfad. Die Datei wird im Objektspeicher abgelegt, als Datei-Inhalt erfasst und bei Bildern sowie PDFs zusätzlich an Vision Intelligence für OCR und Klassifikation übergeben.
+
+  </Step>
+
+  <Step title="Text ist eine URL?" icon="link" title-type="h3">
+
+  Wenn der Text aus genau einer URL besteht, behandelt Drop den Inhalt als Bookmark. Das gilt sowohl für vollständige URLs mit `https://` als auch für blanke Domains oder Pfade wie `nord.com` oder `bild.de/sport`.
+
+  Anschließend lädt Drop eine URL-Vorschau über Open Graph und startet, sofern `skip_extract` nicht gesetzt ist, die Artikel-Extraktion.
+
+  </Step>
+
+  <Step title="Sonst: Text-Inhalt" icon="type" title-type="h3">
+
+  In allen anderen Fällen speichert Drop den Text als normalen Inhalt. Der Content-Typ wird zunächst regelbasiert erkannt und bei niedriger Konfidenz über die LLM-gestützte Klassifikation ergänzt.
+
+  Für die hybride Klassifikation siehe [`/api/drop/classify-smart`](#verwandte-endpunkte).
+
+  </Step>
+</Steps>
+
+## Body-Parameter
+
+Alle Parameter sind optional, solange entweder `text`, `content` oder `input` übergeben wird oder eine Datei im Feld `file` enthalten ist.
+
+<ParamField body="text" param-type="string" required="false">
+Primärer Text- oder URL-Inhalt. `content` und `input` werden als Aliase akzeptiert.
+</ParamField>
+
+<ParamField body="title" param-type="string" required="false">
+Überschreibt den automatisch abgeleiteten Titel.
+</ParamField>
+
+<ParamField body="content_type" param-type="string" required="false">
+Erzwingt einen Content-Typ, zum Beispiel `note`, `bookmark` oder `recipe`, und überspringt die automatische Erkennung.
+</ParamField>
+
+<ParamField body="status" param-type="string" required="false">
+Status des neuen Inhalts. Standard ist `draft`.
+</ParamField>
+
+<ParamField body="tags" param-type="string | array" required="false">
+Tags als JSON-Array-String wie `["a","b"]` oder als Array. Die Werte werden mit automatisch erkannten Tags zusammengeführt.
+</ParamField>
+
+<ParamField body="source_url" param-type="string" required="false">
+Ursprungs-URL des Inhalts, zum Beispiel die Seite, von der ein Clip oder Screenshot stammt.
+</ParamField>
+
+<ParamField body="page_meta" param-type="object" required="false">
+Seitenmetadaten wie `title`, `url`, `domain` oder Capture-Kontext. Diese Daten reichern Karten- und Quellenanzeige an.
+</ParamField>
+
+<ParamField body="body" param-type="string" required="false">
+Zusätzlicher Beschreibungs- oder Body-Text. Bei Datei-Uploads wird dieser Text durchsuchbar gemacht, zum Beispiel für markierten Text aus einem Bereichs-Screenshot.
+</ParamField>
+
+<ParamField body="json_data" param-type="string | object" required="false">
+Strukturierte Daten, die direkt in `structured_data` übernommen werden. Das Format ist Schema.org-nah.
+</ParamField>
+
+<ParamField body="location" param-type="object" required="false">
+Geokoordinaten als `lat`, `lng` und `accuracy`. Diese Daten versorgen die Geo-Komponente der Hybrid Search.
+</ParamField>
+
+<ParamField body="skip_extract" param-type="boolean" required="false">
+Unterdrückt die Artikel-Extraktion für URL-Drops. Verwenden Sie den Parameter, wenn nur das Bookmark und nicht der Volltext benötigt wird.
+</ParamField>
+
+<ParamField body="defer_embedding" param-type="boolean" required="false">
+Verschiebt die Embedding-Erzeugung. Das ist vor allem bei Bulk-Imports sinnvoll, wenn Embeddings später gebündelt erzeugt werden.
+</ParamField>
+
+<ParamField body="emit_card" param-type="boolean" required="false">
+Lässt den Server eine `card.added`-Karte in den Content Stream einspeisen.
+</ParamField>
+
+<ParamField body="file" param-type="binary" required="false">
+Datei-Upload über Multipart mit Feldname `file`. Die maximale Dateigröße beträgt `50 MB`.
+</ParamField>
+
+## Antwort
+
+Jeder Erfolgs-Pfad liefert dieselbe angereicherte Grundstruktur zurück. Dadurch können Clients Text-, URL- und Datei-Drops mit demselben Antwortschema weiterverarbeiten.
+
+| Feld | Beschreibung |
+| --- | --- |
+| `action` | Was passiert ist, zum Beispiel angelegt, aktualisiert oder Duplikat. Konsumenten sollten auf Teilstrings prüfen, nicht auf exakte Gleichheit. |
+| `detected_type` | Erkannter Content-Typ wie `note`, `bookmark` oder `image` |
+| `entity` | Das angelegte oder aktualisierte Objekt mit Feldern wie `id`, `title` oder `filename`, `content_type` und weiteren Metadaten |
+| `entity_type` | Normalisierte Art der Entität: `item`, `document` oder `file` |
+| `uuid` | Globale Entitäts-UUID für Deeplinks und Auflösung |
+| `asset_id` | ID des zugehörigen Asset-Shadows |
+| `tags` | Automatisch abgeleitete Tags |
+
+Bei URL-Drops ergänzt Drop Open-Graph-Felder wie `preview_image`, `og_title`, `description`, `site_name` und `favicon`. Damit kann ein Client die Karte ohne zusätzlichen Nachlade-Request vollständig rendern.
+
+<CodeGroup tabs="URL/Bookmark,Datei">
+
+```json
+{
+  "action": "created_item",
+  "detected_type": "bookmark",
+  "entity": {
+    "id": 48291,
+    "title": "GraphRAG in der Praxis",
+    "content_type": "bookmark",
+    "preview_image": "https://cdn.brainz.ai/previews/48291/cover.jpg"
+  },
+  "entity_type": "item",
+  "uuid": "ent_8f3b2f6d-1f53-47a2-9f1f-5a1f1b0f72d2",
+  "asset_id": 19304,
+  "tags": [
+    "research",
+    "graphrag"
+  ],
+  "preview_image": "https://cdn.brainz.ai/previews/48291/cover.jpg",
+  "og_title": "GraphRAG in der Praxis",
+  "site_name": "Nexus Journal"
+}
+```
+
+```json
+{
+  "action": "created_file",
+  "detected_type": "image",
+  "entity": {
+    "id": 55103,
+    "filename": "screenshot.png",
+    "mime_type": "image/png"
+  },
+  "entity_type": "file",
+  "uuid": "ent_1e2ac9d0-4d9c-4d30-8fd4-2e0c6c6c4b89",
+  "asset_id": 22177
+}
+```
+
+</CodeGroup>
+
+## Stream-Karten mit emit_card
+
+Inhalte, die von der Mobile-App clientseitig angelegt werden, erzeugen die Stream-Karte `card.added` mit `kind: "drop"` selbst. Clients ohne Mobile-UI, vor allem die Chrome-Extension, würden ohne zusätzliche Server-Unterstützung nicht im Content Stream erscheinen.
+
+Mit `emit_card=1` übernimmt der Server diese Aufgabe. Nach einem erfolgreichen Drop speist Brainz serverseitig eine `card.added`-Karte ein, die über `entityType` und `entityId` auf die neue Entität auflöst.
+
+<Callout kind="tip">
+
+Mobile-Clients setzen diesen Parameter bewusst nicht, damit keine doppelten Karten entstehen. Duplikat- und Fehlerantworten werden bei der serverseitigen Emission ohnehin übersprungen.
+
+</Callout>
+
+## Duplikaterkennung
+
+Drop erkennt bereits vorhandene Inhalte, etwa identischen Text oder dieselbe URL, und legt keine Kopie an. In diesem Fall verweist die Antwort auf die bestehende Entität, und `action` signalisiert den Duplikat-Fall.
+
+Prüfen Sie `action`, bevor Sie Folgeaktionen wie Navigation, Stream-Updates oder lokale Statuswechsel auslösen. So vermeiden Sie doppelte Einträge in der Oberfläche und inkonsistente Client-Zustände.
+
+## Verwandte Endpunkte
+
+Die folgenden Endpunkte ergänzen `POST /api/drop` für Vorschau, Klassifikation und Typ-Korrektur.
+
+| Endpunkt | Zweck |
+| --- | --- |
+| `POST /api/drop/url-preview` | Open-Graph-Vorschau einer URL vor dem Speichern |
+| `POST /api/drop/zip-preview` | Inhalt eines ZIP-Archivs vor dem Drop ansehen |
+| `POST /api/drop/classify` | Content-Typ eines Inhalts bestimmen |
+| `POST /api/drop/classify-smart` | Hybride Klassifikation aus Heuristik und LLM bei niedriger Konfidenz |
+| `POST /api/drop/confirm-type` | Content-Typ bestätigen oder überschreiben |
+| `GET /api/drop/content-types` | Verfügbare Content-Typen auflisten |
+| `GET /api/drop/type-stats` | Statistik zur Typ-Klassifikation |
