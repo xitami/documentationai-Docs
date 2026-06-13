@@ -140,6 +140,20 @@ Vier Achsen am `<html>`/Shell-Element, je als Datenattribut, persistierbar in
 .shell[data-radius="round"]    { --bz-radius-scale: 1.4; }
 ```
 
+Die vierte Achse ist der **Akzent** (`data-theme`): ein kollisionsfreier Token
+`--bz-accent` (Default Aqua; `violet` · `amber` · `rose`), der die
+Neutral-Palette unangetastet lässt und so mit Light/Dark komponiert.
+
+<Callout kind="tip">
+
+Bedienbar über das **Darstellung**-Sheet (Header, Sliders-Icon): Segment-Controls
+pro Achse, jede Wahl setzt `data-*` an der Shell, persistiert in `localStorage`
+und wirkt sofort über die Kaskade. Der Default-Wert trägt kein Attribut — so
+greifen die `:root`-Defaults. Beim Start stellt `applyPrefs(shell, loadPrefs())`
+die Wahl vor dem ersten Paint wieder her.
+
+</Callout>
+
 ## Kontext-adaptive Packs
 
 Pack-Komponenten bleiben Host-unabhängig — sie kennen nur Tokens, nie den
@@ -168,10 +182,11 @@ Inkrementell, jede Stufe einzeln deploybar:
 | T1 | Zentrale `:root`-Skala (Werte = heutige Defaults, visuell neutral) | Fertig |
 | T2 | Pack-CSS (font-size/spacing/radius) → Tokens, pixelgleich | Fertig |
 | T3 | `data-type` am Karten-Wurzelelement + Content-Type-Overrides | Fertig |
-| T4 | Kontext-Overrides (`.bzs-detail` / `.bzpb-item`) | Geplant |
-| T5 | App-Shell + Overlays auf Tokens | Geplant |
-| T6 | Nutzer-Präferenzen-UI (Dichte / Schriftgröße / Eckigkeit) | Geplant |
-| T7 | Akzent/Theme-Achse + RenderContext (strukturelle Pack-Varianten) | Geplant |
+| T4 | Kontext-Overrides (Detail-Sheet großzügig, Pinnwand kompakt) | Fertig |
+| T5 | App-Shell-Chrome an die Achsen gekoppelt | Fertig |
+| T6 | Nutzer-Präferenzen-UI (Schriftgröße / Dichte / Eckigkeit / Akzent) | Fertig |
+| T7 | Akzent/Theme-Achse (`--bz-accent`, `data-theme`) | Fertig |
+| T7b | RenderContext (`ctx.surface`) für strukturelle Pack-Varianten | Geplant |
 
 ## Invarianten
 
