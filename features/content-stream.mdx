@@ -53,6 +53,12 @@ Event Sources liefern nur rohe Ereignisse. Erst der Card Reducer entscheidet, ob
 
 `state.cards[]` ist die Single Source of Truth für die sichtbare Reihenfolge und den aktuellen Zustand aller Karten. Die Card View besitzt keinen eigenen fachlichen Zustand, sondern wird vollständig aus `state.cards[]` abgeleitet und reconciled nur das DOM.
 
+<Callout kind="info">
+
+**In v2** ist dieses Modell descriptor-nativ umgesetzt: Die Reduktion ist die **reine `project(events)`-Funktion** (byte-gleiches Replay, `cardId` aus der Event-ID), eine Karte ist ein **Descriptor** `{ component, props }`, und das Rendering liefern die **[Capability](/features/capabilities)- und Pack-Renderer** über die `RenderingEngine` — mit gezieltem In-Place-Patch statt Remount. Die hier beschriebenen Card-Reducer- und Template-Mechanismen sind die Vorgänger-Implementierung desselben Modells.
+
+</Callout>
+
 ## Card-Typen im Stream
 
 Im Stream erscheinen unterschiedliche Kartentypen, je nach auslösendem Ereignis und Verarbeitungsphase. Die folgende Übersicht beschreibt die wichtigsten Typen.
@@ -193,7 +199,7 @@ Der Content Stream und klassische Listenoberflächen zeigen oft dieselben Entit�
 | --- | --- | --- |
 | Mental Model | Timeline oder Feed | Liste oder Inventar |
 | Datenquelle | Event-sourced Stream | API-Query |
-| Rendering | `stream()` mit Lifecycle | `row()` oder `preview()` als HTML-Strings |
+| Rendering | Descriptor-Karten über Capability-Renderer (v2; `stream()`-Lifecycle als Vorgänger) | `row()` oder `preview()` als HTML-Strings |
 | Reihenfolge | Chronologisch, append-only | Sortierbar und filterbar |
 | Echtzeit | Vollständig live per Push | Polling oder manuelles Refresh |
 | Offline | Replay aus IndexedDB | Benötigt Netzwerk |

@@ -17,6 +17,12 @@ Die zentrale Quelle für alle Typdefinitionen ist die Registry in `shared/conten
 
 </Callout>
 
+<Callout kind="info">
+
+**Zwei Achsen.** Die Registry beschreibt einen Typ **semantisch und server-autoritativ** — Erkennung, `keys`, Kategorie, Promotion und Identitäts-Metadaten (Icon, Farbe, Label). *Wie* ein Typ im Client rendert — Stream-Card und Detailansicht — liefert eine **[Capability](/features/capabilities)**. Identität wie Farbe und Icon ist eine Eigenschaft des Content-Typs; das Design-System leitet das gerenderte Aussehen daraus ab. Ein neues Kind bringt beides mit: einen Registry-Eintrag (Server) und eine Capability (Client).
+
+</Callout>
+
 ## Typ-Erkennung
 
 Brainz verwendet eine mehrstufige Hybrid-Erkennung. Die Pipeline kombiniert schnelle Regeln, heuristische Textklassifikation, LLM-Klassifikation, Embedding-basierte Ähnlichkeit, Vision-Mappings und explizite Vorgaben. Dadurch bleibt die Erkennung bei strukturierten Daten deterministisch, bei Freitext robust und bei Medienformaten erweiterbar.
@@ -1109,6 +1115,12 @@ Das Template-System rendert Content-Typen nicht über einen zentralen Monolithen
 
 Dieses Modell trennt Darstellung, Styling und Typwissen sauber voneinander. Neue Typen können dadurch ein eigenes Template erhalten oder sich an ein bestehendes Mehrtypen-Template anhängen, ohne andere Renderpfade zu verändern.
 
+<Callout kind="info">
+
+**v2-Hinweis.** Das hier beschriebene `.tpl.js`-Template-System — imperatives Rendering mit `mini`/`row`/`preview`/`stream` — ist die Vorgänger-Implementierung. In der descriptor-basierten App rendern Content-Typen über **[Capabilities](/features/capabilities)**: Eine Karte ist ein Descriptor `{ component, props }`, die Komponente liefert ein Capability-/Pack-Renderer. Das Trennprinzip (Darstellung, Styling und Typwissen getrennt) bleibt — nur der Renderpfad ist descriptor-nativ.
+
+</Callout>
+
 ### Architekturüberblick
 
 Ein Template besteht in der Regel aus einem Dateipaar:
@@ -1497,6 +1509,8 @@ Ein neuer Typ kann eigene Erkennungsfelder, Textmuster, Präfixe, Schema-Mapping
 
 <Callout kind="info">
 
-Das Registry-Modell ist die Single Source of Truth für Typdefinitionen. Wenn ein Typ in Verhalten, Darstellung oder Erkennung geändert werden soll, ist die Registry der richtige Ort dafür.
+Das Registry-Modell ist die Single Source of Truth für Typdefinitionen. Wenn ein Typ in Verhalten, Erkennung oder Identitäts-Metadaten geändert werden soll, ist die Registry der richtige Ort dafür.
 
 </Callout>
+
+Die Registry deckt die **server- und semantische Seite** ab — Erkennung, Schlüssel, Identitäts-Metadaten. Das **Client-Rendering** eines neuen Typs (Stream-Card, Detail, Actions) liefert eine **[Capability](/features/capabilities)**. Ein vollständig neuer Typ bringt also beides mit: den Registry-Eintrag (Server) und die Capability (Client) — bei Plugins über Manifest und Frontend-Entrypoint.

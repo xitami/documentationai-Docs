@@ -27,6 +27,12 @@ Die zentrale Plugin-Infrastruktur umfasst Registry, Loader, API-Surface, Sandbox
 
 </Callout>
 
+<Callout kind="info">
+
+**Frontend-Erweiterungen werden als [Capabilities](/features/capabilities) gebaut** — dem descriptor-nativen Weg, einen `typeView` oder `renderer` zu realisieren. Diese Seite beschreibt die *Plattform*: Manifest, Trust-Level, Sandbox, Marketplace und Lifecycle. *Wie* ein Frontend-Beitrag konkret rendert, steht unter [Capabilities](/features/capabilities). Die frühere imperative API (`brainz.ui.registerTypeView` mit direktem DOM) ist damit Legacy.
+
+</Callout>
+
 ## Plugin-Typen
 
 Frontend-Plugins erweitern die Benutzeroberfläche und Interaktionen direkt in der App. Backend-Plugins ergänzen Datentypen, Hintergrundverarbeitung und Integrationslogik auf dem Server.
@@ -42,6 +48,8 @@ Frontend-Plugins erweitern die Benutzeroberfläche und Interaktionen direkt in d
 | `shortcut` | Tastaturbefehle und Einträge für die Command Palette |
 | `quickAction` | Quick-Action-Regeln und Dispatch-Handler |
 | `integration-ui` | OAuth-Flow und zugehörige Einstellungsseite |
+
+In der descriptor-basierten App werden diese Frontend-Typen als [Capabilities](/features/capabilities) realisiert: `typeView` entspricht den `renderers`- und `detail`-Slices einer Capability, `quickAction` und `shortcut` den Action-Slices. Eine Capability bündelt sie pro Kind — Content-Typ oder Knowledge Entity — an einer Stelle.
 
 ### Backend-Plugin-Typen
 
@@ -233,7 +241,7 @@ Die für das Plugin freigegebenen Berechtigungen.
 
 <ParamField body="registerTypeView" param-type="function" show-location="false">
 
-Registriert einen neuen TypeView für einen Content Type.
+Legacy: registriert einen TypeView imperativ über DOM. In v2 wird ein TypeView als [Capability](/features/capabilities) geliefert.
 
 </ParamField>
 
@@ -279,33 +287,25 @@ Löst haptisches Feedback auf unterstützten Geräten aus.
 
 </ParamField>
 
-#### TypeView registrieren
+#### TypeView als Capability
 
-```javascript
-(function (brainz) {
-  brainz.ui.registerTypeView("invoice", {
-    label: "Invoices",
-    icon: "receipt",
-    color: "#4F46E5",
-    aliases: ["rechnung"],
-    renderStreamCard: function (item, ctx) {
-      var el = document.createElement("div");
-      el.textContent = item.title + " · " + item.data.status;
-      return el;
-    },
-    renderFullView: function (shell, ctx) {
-      shell.innerHTML = "<h2>Rechnung</h2>";
-    },
-    filters: [
-      { key: "open", label: "Offen" },
-      { key: "paid", label: "Bezahlt" }
-    ],
-    onFilter: function (filterKey, state) {
-      return filterKey;
-    }
-  });
-})(brainz);
+Ein Frontend-Plugin liefert seinen `typeView` als **Capability** statt über imperatives DOM. Der Frontend-Entrypoint stellt die Capability bereit; der Host registriert sie (trusted: direkt; community: gesandboxt). Statt `renderStreamCard`/`renderFullView` zu bauen, liefert sie **Descriptor-Renderer** und eine **Detail-Komposition**:
+
+```ts
+export const invoiceCapability: Capability = {
+  id: "invoice",
+  renderers: { InvoiceCard: invoiceCardRenderer },          // Descriptor → DOM
+  detail: { contentTypes: ["invoice"], compose: composeInvoice },
+};
 ```
+
+Den vollständigen Vertrag — Sinks, Identität, Intent, Actions und Knowledge-Entity-Beziehungen — sowie ein lauffähiges Beispiel beschreibt die Seite [Capabilities](/features/capabilities).
+
+<Callout kind="info">
+
+Die frühere imperative API `brainz.ui.registerTypeView` (DOM aus `renderStreamCard`/`renderFullView`) ist Legacy. Quick Actions, Commands und UI-Helfer (`toast`, `haptic`, `openDetail`) bleiben über `brainz.ui` verfügbar.
+
+</Callout>
 
 #### Command registrieren
 
@@ -528,7 +528,7 @@ Die Sandbox trennt nicht vertrauenswürdige Erweiterungen von der Hauptanwendung
 
 ### Frontend-Sandbox
 
-Community-Plugins laufen in einem dedizierten Web Worker. Dieser Worker hat keinen Zugriff auf `window`, `document` oder andere DOM-APIs, sondern kommuniziert ausschließlich über `postMessage` mit dem Main Thread.
+Community-Plugins laufen in einem dedizierten Web Worker. Dieser Worker hat keinen Zugriff auf `window`, `document` oder andere DOM-APIs, sondern kommuniziert ausschließlich über `postMessage` mit dem Main Thread. Genau dazu passt das Capability-Modell: Ein gesandboxtes Frontend-Plugin liefert **Descriptors** (Komponenten-Bäume), die der Host rendert — niemals direktes DOM. Die DOM-Freiheit der Sandbox ist damit keine Einschränkung, sondern die natürliche Grenze.
 
 Alle API-Aufrufe werden vor der Ausführung auf Berechtigungen geprüft und über eine Proxy-Schicht weitergeleitet. Für die Initialisierung gilt ein Timeout von 5 Sekunden, für einzelne API-Aufrufe ein Timeout von 10 Sekunden.
 
