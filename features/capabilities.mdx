@@ -223,6 +223,60 @@ und Render dort hinein.
 Server-autoritativ und nur **referenziert** (nicht im Client gebaut): die
 **Extraktion/Resolution** der Entity (NER, `resolve_entity`, `attach_entities`).
 
+## Schema-getriebenes Detail
+
+Eine `detail`-Slice muss nicht handgeschrieben sein. Da Brainz Entitäts-Fakten als
+schema.org-getyptes `structured_data` speichert — und `shared/schema-definitions.js`
+pro Typ `properties` und `views` deklariert — kann eine Detailansicht **deklarativ**
+aus einer View-Spec plus den Daten entstehen, über `renderSchemaView`:
+
+```ts
+import { renderSchemaView, type SchemaView } from "../detail-compositions.js";
+
+const PERSON_VIEW: SchemaView = {
+  fields: [
+    { keys: ["role", "jobTitle", "job_title"], label: "Position", icon: "user" },
+    { keys: ["company", "worksFor", "organization"], label: "Unternehmen", icon: "tag" },
+    { keys: ["email"], label: "E-Mail", icon: "mail" },
+    { keys: ["birthday", "birthDate"], label: "Geburtstag", icon: "cal", format: "date" },
+  ],
+  bodyKeys: ["notes", "description"],
+};
+```
+
+`keys` listet die `structured_data`-Felder samt **Aliasen** (erster nicht-leerer
+Wert gewinnt) — gespiegelt aus den schema.org-`properties`. Der Renderer ist rein
+und damit deterministisch.
+
+<Callout kind="info">
+
+**Zwei Schichten fürs Detail:** der **schema-getriebene Default** (deklarativ und
+sicher — ideal für neue oder Community-Kinds ohne Code) und der **kuratierte
+Composer** als Override für hohe Politur (Reihenfolge, Buttons, Spezialformate).
+Sie schichten.
+
+</Callout>
+
+## Worked Example: `person` (Knowledge Entity)
+
+`person` ist ein Graph-Knoten, kein Stream-Typ — daher **keine `renderers`**. Es
+trägt Identität (Farbe) und ein schema-getriebenes Detail:
+
+```ts
+export const personCapability: Capability = {
+  id: "person",
+  colors: { person: { light: "#D06690", dark: "#E58BB0" } },
+  detail: {
+    contentTypes: ["person"],
+    compose: (_props, detail) => renderSchemaView(PERSON_VIEW, detail),
+  },
+};
+```
+
+`colors` registriert das Identitäts-Token über den Color-Sink (Kaskade
+Override → Default → Neutral). Beziehungen kommen über die bestehende
+Detail-Modul-Schicht (verwandte/verknüpfte Inhalte), wenn die Entity verknüpft ist.
+
 ## Capability-Referenz
 
 <ParamField body="id" param-type="string" required="true">
@@ -236,7 +290,13 @@ registriert. **Implementiert.**
 
 <ParamField body="detail" param-type="{ contentTypes: string[]; compose: DetailComposer }">
 Detail-Sheet-Komposition für die genannten `content_type`s. Reine Funktion
-(gleiche Eingaben ⇒ gleiche Nodes). **Implementiert.**
+(gleiche Eingaben ⇒ gleiche Nodes). `compose` kann ein kuratierter Composer
+oder `renderSchemaView(view, detail)` sein. **Implementiert.**
+</ParamField>
+
+<ParamField body="colors" param-type="Record (string → { light; dark })">
+Identitäts-Farb-Token pro Kind. Überschreibt den Pack-Default (Kaskade
+Override → Default → Neutral). **Implementiert.**
 </ParamField>
 
 <ParamField body="projection" param-type="{ componentByContentType?: Record (string → string) }">
