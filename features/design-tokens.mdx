@@ -1,0 +1,192 @@
+---
+title: Design-Tokens
+description: Eine Variable, vier Setz-Ebenen — typ-, kontext- und nutzer-adaptive Gestaltung der descriptor-basierten App über die native CSS-Kaskade
+---
+
+## Überblick
+
+Das **Design-Token-System** macht Typografie, Abstände, Radien und Farben der
+neuen, descriptor-basierten App zentral steuerbar — statt verstreuter, fester
+px-Werte. Es folgt einem einzigen Leitprinzip:
+
+> **Eine Variable, vier Setz-Ebenen, Fallback = CSS-Kaskade.**
+
+Pro semantischem Wert (z. B. „Titelgröße") gibt es **einen** Token-Namen. Er
+wird auf mehreren Selektor-Ebenen gesetzt; die spezifischste gewinnt, der Rest
+erbt. Eine Komponente liest nur `var(--bz-font-title)` — nie eine Zahl. Welche
+Ebene greift, entscheidet die native Spezifität, nicht verschachtelte
+`var(a, var(b, …))`-Fallbacks.
+
+<Callout kind="info">
+
+„Typ-spezifisch mit Fallback auf die nächsthöhere Instanz" ist genau das, was die
+CSS-Kaskade nativ kann. Wir nutzen sie als Mechanik, statt sie nachzubauen.
+
+</Callout>
+
+## Die vier Ebenen
+
+Dieselbe Variable, vier Orte, an denen sie gesetzt werden darf — von allgemein
+zu spezifisch:
+
+| # | Ebene | Selektor | Zweck |
+|---|-------|----------|-------|
+| 1 | **Global** | `:root` / `.shell` | Default-Skala. Single source of truth. |
+| 2 | **Content-Type** | `[data-type="expense"]` | Typ-spezifische Overrides (Expense dichter, Media größerer Cover-Radius). |
+| 3 | **Kontext** | `.bzs-detail`, `.bzpb-item` | Gleiche Karte im Detail großzügig, in der Pinnwand als Kachel. |
+| 4 | **Nutzer** | `.shell[data-density]` … | Geschmack & Accessibility (Dichte, Schriftgröße, Eckigkeit, Theme). |
+
+Beispiel — vier Ebenen setzen denselben Token, die spezifischste greift:
+
+```css
+:root                        { --bz-font-title: 15px; }   /* 1 global   */
+[data-type="expense"]        { --bz-font-title: 13.5px; }  /* 2 typ      */
+.bzs-detail                  { --bz-font-title: 19px; }    /* 3 kontext  */
+.shell[data-text-size="lg"]  { --bz-font-scale: 1.12; }    /* 4 nutzer   */
+```
+
+Die Komponente bleibt unverändert:
+
+```css
+.bz-title { font-size: var(--bz-font-title, 15px); }
+```
+
+## Die zentrale Skala
+
+Die globale Ebene lebt in der App-Shell (`apps/mobile/src/main.ts`). Werte
+entsprechen 1:1 den bisherigen Defaults — das System ist visuell neutral
+eingeführt. Nutzer-Achsen skalieren über `--bz-*-scale`-Faktoren.
+
+<ParamField path="--bz-font-title / -body / -meta / -label" type="length">
+  Typografie-Rollen. Default `15 / 12.5 / 11 / 10.5px`, multipliziert mit
+  `--bz-font-scale`.
+</ParamField>
+
+<ParamField path="--bz-space-1 … -4, --bz-space-card" type="length">
+  Abstandsskala (`4 / 8 / 12 / 16px`) plus Karten-Innenabstand, skaliert mit
+  `--bz-space-scale`.
+</ParamField>
+
+<ParamField path="--bz-pad-card-y / -x" type="length">
+  Karten-Innenabstand vertikal/horizontal (`13 / 15px`). Pro Typ überschreibbar.
+</ParamField>
+
+<ParamField path="--bz-radius-card / -sheet / -input / -media / -cover" type="length">
+  Eckradien (`18 / 22 / 13 / 11 / 8px`), skaliert mit `--bz-radius-scale`.
+</ParamField>
+
+<ParamField path="--bz-radius-chip" type="length">
+  Pillen-/Chip-Radius (`999px`, bewusst nicht skaliert — bleibt rund).
+</ParamField>
+
+<Callout kind="tip">
+
+Naming ist **semantisch** (`--bz-font-title`), nicht numerisch (`--bz-font-3`):
+so kann eine Ebene „den Titel" anheben, ohne jede einzelne Verwendung zu treffen.
+Nur Spacing ist skalar (`--bz-space-1..4`), weil Abstände keine Rolle tragen.
+
+</Callout>
+
+## Content-Type-Overrides (Ebene 2)
+
+Jede Stream-Karte trägt seit der T3-Stufe `data-type="…"` an ihrem
+Wurzelelement (der Renderer setzt es in `shell()`). Damit greift die
+typ-spezifische Token-Ebene — **ohne** Renderer-Änderung. Farbe war über `--tc`
+schon typ-spezifisch; jetzt sind es auch Typo, Spacing und Radius, dort wo es
+einen gestalterischen Grund gibt.
+
+<Callout kind="info">
+
+Bewusst **sparsam**: kein „13 Typen × alle Tokens"-Wildwuchs. Nur einzelne
+Typen heben einzelne Tokens an; alles andere erbt die globale Skala.
+
+</Callout>
+
+```css
+/* Betrag dominiert → Titel kompakter, Karte dichter */
+.bz-card[data-type="expense"] {
+  --bz-font-title: calc(13.5px * var(--bz-font-scale, 1));
+  --bz-pad-card-y: calc(11px * var(--bz-space-scale, 1));
+}
+
+/* Bildgetriebene Typen → cineastischerer Cover-/Media-Radius */
+.bz-card[data-type="media"],
+.bz-card[data-type="photo"] {
+  --bz-radius-media: calc(14px * var(--bz-radius-scale, 1));
+  --bz-radius-cover: calc(10px * var(--bz-radius-scale, 1));
+}
+```
+
+Beachte: Die Overrides multiplizieren weiter mit den Nutzer-Skalen
+(`--bz-*-scale`) — die Ebenen komponieren, statt sich gegenseitig auszuschalten.
+Eine Media-Karte bei `data-radius="round"` erhält `14px × 1.4`.
+
+## Nutzer-Achsen (Ebene 4)
+
+Vier Achsen am `<html>`/Shell-Element, je als Datenattribut, persistierbar in
+`localStorage`. Dichte, Schriftgröße und Eckigkeit sind reine Skalenfaktoren
+(klein, risikoarm); Akzent/Theme ist der größere Schritt.
+
+| Achse | Attribut | skaliert | Werte |
+|-------|----------|----------|-------|
+| Dichte | `data-density` | `--bz-space-scale` | compact · normal · cozy |
+| Schriftgröße | `data-text-size` | `--bz-font-scale` | sm · md · lg |
+| Eckigkeit | `data-radius` | `--bz-radius-scale` | sharp · normal · round |
+| Akzent/Theme | `data-theme` | `--bz-color-*` | über Light/Dark hinaus |
+
+```css
+.shell[data-density="compact"] { --bz-space-scale: .82; }
+.shell[data-text-size="lg"]    { --bz-font-scale: 1.12; }
+.shell[data-radius="round"]    { --bz-radius-scale: 1.4; }
+```
+
+## Kontext-adaptive Packs
+
+Pack-Komponenten bleiben Host-unabhängig — sie kennen nur Tokens, nie den
+konkreten Screen. Zwei Stufen, von billig zu mächtig:
+
+<Steps>
+  <Step title="Token-Kontext (deckt ~80 % ab)">
+    Der Kontext-Container (`.bzs-detail`, `.bzpb-item`) hebt Tokens an →
+    dieselbe Komponente sieht je Ort anders aus (Größe, Abstand, Radius). Keine
+    Renderer-Änderung nötig.
+  </Step>
+  <Step title="RenderContext (für strukturelle Unterschiede)">
+    `RenderingEngine.render(node, dispatch, ctx?)` erhält optional
+    `ctx.surface: "stream" | "detail" | "pinboard"`. Der Renderer kann je
+    Surface andere Knoten bauen (Stream = Titel+Glut, Detail = Titel+Body+Felder,
+    Pinboard = Cover+Label). Default „stream", abwärtskompatibel.
+  </Step>
+</Steps>
+
+## Migrationsstufen
+
+Inkrementell, jede Stufe einzeln deploybar:
+
+| Stufe | Inhalt | Status |
+|-------|--------|--------|
+| T1 | Zentrale `:root`-Skala (Werte = heutige Defaults, visuell neutral) | Fertig |
+| T2 | Pack-CSS (font-size/spacing/radius) → Tokens, pixelgleich | Fertig |
+| T3 | `data-type` am Karten-Wurzelelement + Content-Type-Overrides | Fertig |
+| T4 | Kontext-Overrides (`.bzs-detail` / `.bzpb-item`) | Geplant |
+| T5 | App-Shell + Overlays auf Tokens | Geplant |
+| T6 | Nutzer-Präferenzen-UI (Dichte / Schriftgröße / Eckigkeit) | Geplant |
+| T7 | Akzent/Theme-Achse + RenderContext (strukturelle Pack-Varianten) | Geplant |
+
+## Invarianten
+
+<Callout kind="warning">
+
+- **Determinismus bleibt:** Tokens sind reines CSS, keine Projektions- oder
+  Render-Logik.
+- **Light/Dark** bleibt die `.bz-dark`-Kaskade — die Token-Werte verzweigen dort.
+- **Packs bleiben Host-unabhängig:** ein Pack kennt nur Tokens und optional
+  `ctx.surface`, nie den konkreten Screen.
+- **Keine Emojis**, Brainz-Ink-Ästhetik unverändert — Tokens kodifizieren nur,
+  was das Auge heute schon sieht.
+
+</Callout>
+
+Verwandt: [Capabilities](/features/capabilities) bündeln Stream-Card, Detail,
+Identität und Actions eines Kinds — und rendern dank kontext-adaptiver Packs an
+jedem Ort passend.

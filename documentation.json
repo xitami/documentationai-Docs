@@ -75,6 +75,11 @@
                 "icon": "blocks"
               },
               {
+                "title": "Design-Tokens",
+                "path": "features/design-tokens",
+                "icon": "palette"
+              },
+              {
                 "title": "Integrationen & Enrichment",
                 "path": "features/integrations",
                 "icon": "cable"
