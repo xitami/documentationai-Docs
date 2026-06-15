@@ -33,6 +33,7 @@ Die folgende Tabelle zeigt, welche externen Dienste Brainz einbindet, wofür sie
 | GitHub OAuth | Auth | Social Login | Optional | `GITHUB_CLIENT_ID` |
 | S3-kompatibler Storage | Storage | Dateispeicherung | Pflicht | `S3_ENDPOINT` etc. |
 | Cloudflare Workers | Edge | Image CDN, RSS, Email Ingest, Fetch Proxy | Optional | Separates Deployment |
+| Favicon-Service | Medien | Domain-Favicons mit Letter-Fallback | Optional | R2/S3-Storage |
 
 ## Medien-Enrichment
 
@@ -106,6 +107,25 @@ Brainz unterstützt sowohl ausgehende als auch eingehende Webhooks. Für die Ver
 Cloudflare Workers ergänzen das Backend um spezialisierte Edge-Services. Dazu gehören ein Image CDN, ein RSS Fetcher, Email Ingest und ein Fetch Proxy für ausgelagerte Netzwerkpfade.
 
 Diese Worker laufen als separates Deployment und werden unabhängig vom Kern-Backend betrieben. Die Bereitstellung erfolgt über Wrangler, sodass du Edge-Funktionen getrennt vom Hauptsystem ausrollen und betreiben kannst.
+
+## Favicon-Service
+
+Der Favicon-Service liefert Marken-Favicons für Domains und versorgt damit die UI-Oberflächen mit Quell-Erkennungssymbolen — die [Entdecken-Karten](/features/explore), den Artikel-Reader, die Feeds-Liste und Stream-Karten mit Quelle. Favicons werden in R2/S3 zwischengespeichert; ist keines auffindbar, erzeugt der Dienst ein Letter-Avatar als Fallback, sodass der UI-Pfad nie ohne Symbol bleibt.
+
+| Route | Auth | Zweck |
+| --- | --- | --- |
+| `GET /api/favicons/:domain?size=64` | Öffentlich | Favicon ausliefern (R2-Cache → Ingest → Letter-Fallback) |
+| `POST /api/favicons/resolve` | User **oder** Service-Key | Favicon-Auflösung anstoßen (z.B. CF-Worker via `INGEST_API_KEY`) |
+| `GET /api/favicons/stats` | User | Cache-Statistiken |
+| `POST /api/favicons/purge` | Admin | Cache-Eintrag löschen |
+
+Die Domain wird normalisiert (Kleinschreibung, `www.` entfernt); `size` liegt zwischen 1 und 512 (Default 64). Antworten setzen `Cache-Control` auf 30 Tage (`immutable`) für gecachte Favicons bzw. 1 Stunde für frisch generierte, plus den Header `X-Favicon-Source` (`cache` · `source` · `generated`).
+
+<Callout kind="info">
+
+Der erste Request pro Domain stößt einen **Cold-Ingest** an und kann bis zu 8 Sekunden dauern; alle Folgeaufrufe kommen aus dem R2-Cache. In der Mobile-App baut `faviconUrl(domainOrUrl, size)` (`explore-api.ts`) die URL; im Karten-Kicker bleibt das Typ-Icon als Platzhalter sichtbar, bis das Favicon geladen ist, und dient bei Ladefehler als Fallback.
+
+</Callout>
 
 ## Graceful Degradation
 

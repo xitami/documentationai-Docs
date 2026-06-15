@@ -60,6 +60,11 @@
                 "icon": "activity"
               },
               {
+                "title": "Entdecken (Explore)",
+                "path": "features/explore",
+                "icon": "compass"
+              },
+              {
                 "title": "Drop-System",
                 "path": "features/drop-system",
                 "icon": "inbox"
