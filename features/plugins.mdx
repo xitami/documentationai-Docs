@@ -3,6 +3,110 @@ title: Plugin-System
 description: Full-Stack-Erweiterungsplattform mit Sandboxing, Marketplace und Lifecycle-Management
 ---
 
+<Callout kind="info">
+
+**Status (Stand 15.06.2026).** Das Plugin-System wird in der neuen App
+(app.brainz.plus/app) frisch aufgebaut — die kanonische Architektur steht in
+`specs/plugin-architecture.md`. **Heute verfügbar (P1): deklarative Plugins** — reine
+Daten-Manifeste ohne eigenen Code (kein Sandbox-Risiko), Persistenz über den
+**Content-Store**. **Geplant:** P2 Code-Plugins im Web-Worker-Sandbox, P3 öffentliche
+Registry + Veröffentlichung. Die Abschnitte ab „Plugin-Typen" beschreiben die
+**Ziel-Architektur** — Teile davon sind noch nicht live. Im Zweifel gilt der
+**Schnellstart** direkt hier drunter.
+
+</Callout>
+
+## Schnellstart: Dein erstes Plugin (deklarativ, P1 — heute verfügbar)
+
+Ein **deklaratives Plugin ist reine Daten** — ein Manifest, kein eigener Code. Der Host
+mappt es in die bestehenden Action-Slots der App. Dadurch gibt es kein Sandbox-Risiko,
+und der An/Aus-Schalter wirkt sofort ohne Reload. Das ist der Teil des Plugin-Systems,
+der heute live ist.
+
+### Das Manifest
+
+Ein Plugin beschreibt sich über `contributes.actions`. Beispiel — das mitgelieferte
+**Leseliste**-Plugin, das auf Lesbarem die Aktion „Zur Leseliste" anbietet und den
+Inhalt als eigenen Eintrag im Content-Store ablegt:
+
+```typescript
+const readlistPlugin: DeclarativePlugin = {
+  id: "de.brainz.readlist",
+  name: "Leseliste",
+  description: "Fügt die Aktion Zur Leseliste hinzu — legt Inhalte als eigene Einträge zum späteren Lesen an.",
+  icon: "book",
+  permissions: ["content:write"],
+  contributes: {
+    actions: [
+      {
+        id: "add",
+        label: "Zur Leseliste",
+        icon: "book",
+        surface: "bar",            // "bar" = Aktionsleiste oben | "section" = Aktions-Sektion
+        rank: 34,                  // Sortierung innerhalb des Slots
+        contentTypes: ["bookmark", "article", "link", "blogpost", "story", "document"],
+        effect: {
+          type: "createEntry",
+          contentType: "readlist_item",
+          title: "title",          // gepunkteter Feldpfad → wird der Titel
+          from: { url: "url", source: "domain" },  // weitere Felder ins json_data
+        },
+      },
+    ],
+  },
+};
+```
+
+Registriert wird es mit `registerDeclarativePlugin(readlistPlugin)`. Die App führt das
+beim Start für alle Plugins aus; sichtbar werden Aktionen erst, wenn das Plugin
+eingeschaltet ist (siehe Aktivieren).
+
+### Sichtbarkeit: zwei Bedingungen
+
+Eine Plugin-Aktion erscheint nur, wenn **beide** zutreffen:
+
+1. **Das Plugin ist aktiviert** (Toggle in den Einstellungen).
+2. **Das deklarative `appliesWhen` trifft zu** — so frustriert keine Aktion, die nichts tut.
+
+| `appliesWhen`-Form | Bedeutung |
+| --- | --- |
+| weggelassen / `always: true` | immer (sofern Plugin an und `contentTypes` passt) |
+| `contentType: ["bookmark", …]` | nur bei diesen Content-Typen |
+| `hasField: "data.url"` | nur wenn dieses Feld einen Wert hat |
+
+Feldpfade sind **gepunktet und JSON-String-sicher**: `structured_data.url` greift auch
+dann, wenn `structured_data` als JSON-String vorliegt — die Zwischenebenen werden
+automatisch ausgepackt.
+
+### Effekte (fester, sicherer Satz)
+
+Ein deklaratives Plugin wählt aus einem festen Satz von Effekten. Kein beliebiger Code:
+
+| Effekt | Felder | Wirkung |
+| --- | --- | --- |
+| `openUrl` | `from` | Öffnet die URL (nur `http`/`https`) in neuem Tab; sonst Hinweis „Keine URL vorhanden" |
+| `copy` | `fields` | Kopiert die verketteten Feldwerte in die Zwischenablage |
+| `share` | `title?`, `text?` | Teilen-Dialog (Web Share API), Fallback Zwischenablage |
+| `createEntry` | `contentType`, `title?`, `from?` | Legt einen Eintrag im **Content-Store** an (`POST /api/drop`) |
+
+### Persistenz: der Content-Store, kein Plugin-Silo
+
+`createEntry` schreibt über `POST /api/drop` einen **ganz normalen Eintrag** — denselben
+Speicher, den auch der Rest der App nutzt. `sourceUuid` verlinkt automatisch zurück auf
+die Quelle. Das ist bewusst so (Entscheidung 3 der Architektur): Plugin-Daten leben im
+Dokumenten-/Content-Store, nicht in einem separaten Plugin-Speicher.
+
+### Aktivieren
+
+**Einstellungen → Darstellung → Erweiterungen** → Plugin einschalten. Wirkt sofort,
+ohne Reload. Zwei Plugins sind bereits live:
+
+- **Leseliste** (deklarativ) — „Zur Leseliste" legt ein `readlist_item` im Content-Store an.
+- **Bring! Einkaufsliste** (Code-Capability) — „An Bring! senden" teilt Zutaten/Listen an die Bring!-App.
+
+> Code-Capabilities wie Bring! sind kuratiert mitgeliefert. Fremder Plugin-Code im
+> Sandbox (P2) und eine öffentliche Registry (P3) folgen — siehe Ziel-Architektur unten.
+
 ## Überblick
 
 Das Plugin-System von brainz erweitert Frontend und Backend über eine gemeinsame Laufzeit, ein Manifest-basiertes Bereitstellungsmodell und klar getrennte Trust-Levels. Es verbindet die Offenheit von Community-Plugins mit Kontrollmechanismen für Unternehmensumgebungen, damit du Erweiterungen installieren, signieren, einschränken und isoliert ausführen kannst.
