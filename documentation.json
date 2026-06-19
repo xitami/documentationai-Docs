@@ -55,6 +55,11 @@
                 "icon": "list"
               },
               {
+                "title": "Inhalte kombinieren",
+                "path": "features/combining",
+                "icon": "boxes"
+              },
+              {
                 "title": "Content Stream",
                 "path": "features/content-stream",
                 "icon": "activity"

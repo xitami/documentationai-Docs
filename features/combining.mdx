@@ -1,0 +1,204 @@
+---
+title: Inhalte kombinieren (Rezepte)
+description: Wie aus dem Kombinieren von Karten neue Content-Typen entstehen — das Schichtenmodell (Atome → Moleküle → Organismen), der Rezept-Vertrag und eine Schritt-für-Schritt-Anleitung am Beispiel der Galerie, damit Entwickler und Agenten eigene Elemente beitragen können.
+---
+
+## Überblick
+
+Brainz lässt Inhalte **kombinieren**: Schiebt man zwei Karten zusammen, entsteht etwas Drittes. Zwei Aufgaben werden eine **Aufgabenliste**, mehrere Bilder eine **Galerie**, viele gemischte Dinge ein **Sammelalbum**. Das ist kein Sonderfall pro Typ, sondern ein generisches Prinzip — wie ein Crafting-System: kleine Bausteine fügen sich zu größeren.
+
+Technisch ist das **Komposition** nach dem Muster von *Atomic Design*. Brainz hat die Schichten bereits — diese Seite macht sie explizit und zeigt am Beispiel der Galerie, wie man ein neues Element so anlegt, dass es **überall** wiederverwendbar ist.
+
+<Callout kind="info">
+
+Das Kombinieren reitet auf bestehenden Systemen — der **[Content-Typen-Registry](/features/content-types)**, dem render_ui-Katalog und den **[Capabilities](/features/capabilities)**. Es ist kein separates System, sondern eine deklarative Schicht darüber.
+
+</Callout>
+
+## Das Schichtenmodell
+
+Kombinieren heißt: aus kleineren, wiederverwendbaren Bausteinen größere zusammensetzen. Vier Schichten, von unten nach oben:
+
+| Schicht | Was es ist | Bei Brainz |
+| --- | --- | --- |
+| **Atome** | unteilbare Primitive | render_ui-Core (`Markdown`, `Image`, `Checklist`, `Callout`, `KeyValue`, `Table`, `Grid`, …) + die Compose-Eingabefelder |
+| **Moleküle** | wiederverwendbare Blöcke aus Atomen | zusammengesetzte Komponenten (`FieldList`, `ChipRow`, `StatBar`, `Galerie`, `StepList`, …) |
+| **Organismen** | eigenständige Content-Typen | `task`, `recipe`, `galerie`, `note`, `event`, … (die Registry) |
+| **Kompositionen** | wie ein Organismus seine Moleküle anordnet | die Detail-Kompositionen pro Content-Typ |
+
+<Callout kind="info">
+
+**Der Hebel ist die Molekül-Schicht.** Ein Kochrezept ist die Summe wiederverwendbarer Moleküle: Zutatenliste + Schritt-für-Schritt + Bildergalerie + Tipps + Einkaufsliste. Keiner dieser Bausteine ist rezept-eigen — die Galerie lebt auch im Reisetagebuch, die Schrittliste in einer Anleitung, der Tipp (`Callout`) überall. **Bevor du ein neues Element baust: prüfe, ob ein passendes Molekül schon existiert, und verwende es wieder.**
+
+</Callout>
+
+## Rezepte — der Vertrag
+
+Ein **Rezept** ist eine deklarative Regel: Welche Kombination von Karten ergibt welchen neuen Content-Typ, und wie sieht das Ergebnis aus?
+
+```ts
+interface Recipe {
+  id: string;                              // "core/gallery"
+  label: string;                           // "Galerie"
+  match: { kinds?: Record<string, string> }; // Zünd-Formel: { image: ">=2" }
+  reads: string[];                         // projizierte Quell-Felder, die das Template binden darf
+  resultType?: string;                     // registrierter Content-Typ des Ergebnisses
+  template: TemplateNode;                  // render_ui-Descriptor mit Platzhaltern ($bind/$repeat/$count/$source)
+}
+```
+
+- **`match.kinds`** ist die Crafting-Formel. Operatoren: `">=2"`, `"1"`, `">1"`. Mehrere Keys werden mit UND verknüpft (`{ recipe: ">=1", event: "1" }` = „Rezepte **und** ein Anlass").
+- **`template`** ist ein render_ui-Descriptor-Baum mit Platzhaltern, die der Host mit den Quellen interpoliert: `{ $bind: "feld" }` (Quell-Feld), `{ $repeat: { node } }` (ein Knoten je Quelle), `{ $count: "sources" }`, `{ $source: true }`.
+- Das **„produce"** — die konkreten Felder des neuen Eintrags (`json_data` für den Drop) — wird host-seitig pro Rezept-`id` synthetisiert (eine reine Funktion über die Quellen).
+
+Das Ergebnis wird per `resultType` zu einem **Content-Typen-Organismus**. Wie er rendert, entscheidet die Registry: `render.card: "generic"` rendert deklarativ aus den Feldern (kein eigener Karten-Code) — oder ein benannter Komponenten-Renderer.
+
+<Callout kind="info">
+
+**Eine Quelle der Wahrheit.** Ein Rezept fügt nichts Neues an der Seite hinzu: Es deklariert eine Kombination, der neue Typ lebt in der Registry, die Darstellung kommt aus render_ui. Damit ist jedes neue Element automatisch in allen Oberflächen verfügbar (Stream, Detail, Editor, PDF).
+
+</Callout>
+
+## Beispiel: das Galerie-Rezept
+
+Die Galerie ist die kompakteste Vorlage für ein neues Element — sie zeigt jeden Schritt, ohne eigenen Karten-Code zu brauchen.
+
+<Steps>
+
+<Step title="Das Rezept definieren" icon="puzzle">
+
+`≥2 Bilder → galerie`. Das Template ist die Anker-Vorschau = die echte Karte: eine generische Karte, deren Bilder je Quelle expandieren.
+
+```ts
+export const GALLERY_RECIPE: Recipe = {
+  id: "core/gallery",
+  label: "Galerie",
+  match: { kinds: { image: ">=2" } },
+  reads: ["image", "caption", "title"],
+  resultType: "galerie",
+  template: {
+    type: "GenericCard",
+    props: {
+      contentType: "galerie",
+      title: "Galerie",
+      imageTreatment: "gallery",
+      images: [{ $repeat: { node: { $bind: "image" } } }], // ein Bild-URL je Quelle
+    },
+  },
+};
+```
+
+</Step>
+
+<Step title="Das „produce" schreiben" icon="code">
+
+Pro Rezept-`id` eine reine Funktion, die die Quellen auf die Felder des neuen Eintrags abbildet (`json_data` des Drops):
+
+```ts
+"core/gallery": (sources) => {
+  const images = sources.map((s) => imageOf(s.fields)).filter(Boolean);
+  return {
+    title: "Galerie",
+    images,
+    cover: images[0] ?? "",                          // Stufe-A-Cover; Vision-Scoring folgt
+    image_refs: sources.map((s) => ({ uuid: s.uuid, kind: s.kind })),
+  };
+},
+```
+
+</Step>
+
+<Step title="Den Ergebnis-Typ darstellbar machen" icon="palette">
+
+Wenn ein passendes **Molekül oder eine Darstellung schon existiert, wiederverwenden.** Die Galerie braucht keinen eigenen Karten-Typ: sie rendert über die generische Karte mit einer neuen Bild-Behandlung `gallery` (Foto-Mosaik). Damit greift dieselbe Logik wie bei der Aufgabenliste — die generische Karte leitet aus den Feldern ab, was sie zeigt.
+
+<Callout kind="info">
+
+Die generische Karte erkennt ein **Array von Bild-URLs** und rendert es als Mosaik statt als Chips. Ein neuer Typ mit Bildern bekommt die Galerie-Darstellung also geschenkt, sobald sein Feld ein URL-Array ist.
+
+</Callout>
+
+</Step>
+
+<Step title="Den Typ registrieren" icon="database">
+
+Der `resultType` muss als Content-Typ bekannt sein, sonst fällt die Karte auf den Notiz-Fallback. Kanonisch geschieht das in der **Registry** (`shared/content-type-registry.js`) mit `render.card: "generic"`. Der Client kann denselben Typ zusätzlich statisch auflösen, sodass er ohne Deploy rendert.
+
+</Step>
+
+<Step title="Tests + Verifikation" icon="check-circle">
+
+Die Rezept-Engine ist rein und deterministisch — ideal für Unit-Tests: Match-Bedingung, Template-Auflösung (keine Platzhalter im Output), das „produce". Die Darstellung verifiziert man im Komponenten-Katalog (light + dark).
+
+</Step>
+
+</Steps>
+
+## Ein neues Element beitragen
+
+Dasselbe Muster für jedes neue Rezept — egal ob im Core oder über ein **[Plugin](/features/plugins)** (`contributes.recipes` / `contributes.contentTypes` / `contributes.components`):
+
+<Steps>
+
+<Step title="Wiederverwenden prüfen" icon="search">
+
+Gibt es schon ein Molekül für das, was du zeigen willst (Liste, Schritte, Galerie, Tabelle, Callout)? Dann nutze es. Nur wenn nichts passt, baust du ein neues Molekül — und machst es so allgemein, dass auch andere Typen es nutzen können.
+
+</Step>
+
+<Step title="Rezept + produce definieren" icon="puzzle">
+
+`match`-Formel, `reads`, `resultType`, `template`, plus die `produce`-Funktion. Reine Funktionen, keine Seiteneffekte.
+
+</Step>
+
+<Step title="Ergebnis-Typ registrieren" icon="database">
+
+Registry-Eintrag mit `render.card` (`"generic"` für den deklarativen Pfad oder ein benannter Renderer). Icon, Farbe und Label gehören zum Typ — das Design-System leitet das Aussehen daraus ab.
+
+</Step>
+
+<Step title="Testen + im Katalog verifizieren" icon="check-circle">
+
+Unit-Tests für die Engine, visuelle Prüfung im Komponenten-Katalog.
+
+</Step>
+
+</Steps>
+
+## Veredelung (Enrichment)
+
+Der eigentliche Mehrwert: Ein kombiniertes Ergebnis ist **mehr als die Summe seiner Teile**, weil Brainz es nach dem Anlegen automatisch anreichert. Eine Galerie bekommt so ein Cover, einen Titel und einen Ort, ohne dass der Nutzer etwas tut.
+
+| Veredelung | Quelle | Liefert |
+| --- | --- | --- |
+| Bildanalyse | Vision-Pipeline | Cover-Auswahl, Bildunterschriften, Farbpalette |
+| Cluster-Label | Embeddings | automatischer Titel |
+| Geocoding | EXIF → Reverse-Geocode | Ort |
+| Zusammenfassung | KI | TL;DR für Notizbuch/Dossier |
+| Zutaten | Enrichment-API | saisonal, Allergene, Alternativen |
+
+Siehe **[Integrationen & Enrichment](/features/integrations)** für die verfügbaren Dienste.
+
+<Callout kind="warning">
+
+**Grenze zum Backend.** Das Anlegen (`/api/drop` mit `content_type` + `json_data`) und die client-seitige Darstellung sind deklarativ. Damit ein kombinierter Typ **live im Stream** voll erscheint, muss der Server seine Felder (auch Arrays wie `images`) in den Snapshot übernehmen und der Typ in der kanonischen Registry stehen. Die Veredelung läuft asynchron — das Ergebnis „blüht" nach dem Anlegen auf.
+
+</Callout>
+
+## Verwandte Themen
+
+<CardGroup cols={2}>
+  <Card title="Content-Typen" icon="list" href="/features/content-types">
+    Die Registry, in der jeder Ergebnis-Typ deklariert wird.
+  </Card>
+  <Card title="Plugin-System" icon="puzzle" href="/features/plugins">
+    Rezepte, Typen und Komponenten über `contributes` beitragen.
+  </Card>
+  <Card title="Capabilities" icon="blocks" href="/features/capabilities">
+    Wie ein Typ als Karte und Detailansicht rendert.
+  </Card>
+  <Card title="Design-Tokens" icon="palette" href="/features/design-tokens">
+    Farben, Icons und das Aussehen, abgeleitet aus der Typ-Identität.
+  </Card>
+</CardGroup>
