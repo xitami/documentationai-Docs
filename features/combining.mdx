@@ -166,6 +166,30 @@ Unit-Tests für die Engine, visuelle Prüfung im Komponenten-Katalog.
 
 </Steps>
 
+## Verfügbare Moleküle
+
+Diese Moleküle sind bereits gebaut und über **jeden generischen Content-Typ** wiederverwendbar — als Treatment der generischen Karte (ein Feld genügt, kein eigener Karten-Code):
+
+| Molekül | Feld | Ergibt |
+| --- | --- | --- |
+| **Galerie** | `images` (URL-Array, ≥2) | Foto-Mosaik (2 · 3er · 2×2 + „+N") |
+| **StepList** | `steps` (Array, ≥2) | nummerierte Schrittfolge |
+| **IngredientList** | `ingredients` (`"200 g Mehl"` oder `{amount,name}`) | tabellarische Zutaten, Mengen fluchten |
+| **Rating** | `rating` (+ `ratingMax`/`ratingCount`) | fraktionale Sterne, halbstern-genau |
+| **Tip** | `tips` (String/Array) | akzent-getönte Hinweis-Blöcke |
+
+<Callout kind="info">
+
+**So entsteht ein Kochrezept ohne eigenen Code:** ein Eintrag mit `rating`, `ingredients`, `steps` und `tips` rendert automatisch Bewertung, Zutatenliste, Schritte und Tipps — mehrere Moleküle in EINER Karte. Genau das meint „Organismus = Summe wiederverwendbarer Moleküle".
+
+</Callout>
+
+<Callout kind="info">
+
+**Richtung.** Heute sind Moleküle Treatments der generischen Karte. Der nächste Schritt hebt sie zu first-class Bausteinen mit eigenem Vertrag, die in *jeder* Oberfläche rendern, von Rezepten *erzeugt* und als *Zutat* aufgenommen werden können.
+
+</Callout>
+
 ## Veredelung (Enrichment)
 
 Der eigentliche Mehrwert: Ein kombiniertes Ergebnis ist **mehr als die Summe seiner Teile**, weil Brainz es nach dem Anlegen automatisch anreichert. Eine Galerie bekommt so ein Cover, einen Titel und einen Ort, ohne dass der Nutzer etwas tut.
