@@ -156,8 +156,36 @@ Frontend-Plugins erweitern die Benutzeroberfläche und Interaktionen direkt in d
 | `shortcut` | Tastaturbefehle und Einträge für die Command Palette |
 | `quickAction` | Quick-Action-Regeln und Dispatch-Handler |
 | `integration-ui` | OAuth-Flow und zugehörige Einstellungsseite |
+| `homeSection` | Deklarative Sektion im Adaptiven Home — modus-gegated, rendert über einen render_ui-Descriptor |
 
 In der descriptor-basierten App werden diese Frontend-Typen als [Capabilities](/features/capabilities) realisiert: `typeView` entspricht den `renderers`- und `detail`-Slices einer Capability, `quickAction` und `shortcut` den Action-Slices. Eine Capability bündelt sie pro Kind — Content-Typ oder Knowledge Entity — an einer Stelle.
+
+#### Home-Sektionen (`homeSection`)
+
+Das **Adaptive Home** ist ein Komponist: eine Context-Engine wählt aus Signalen (Tageszeit · Wochentag · Linse · Flow) einen *Modus* und komponiert daraus eine geordnete Liste von **Sektionen**. Sektionen sind **deklarativ** — ein Plugin beschreibt, *wann* eine Sektion erscheint und *was* sie zeigt, nicht *wie* sie gezeichnet wird.
+
+**Sektion-Vertrag** (`HomeSectionDescriptor`):
+
+| Feld | Zweck |
+| --- | --- |
+| `id` | Stabile Kennung + Position im Composer-Feed |
+| `appliesWhen(signals)` | Prädikat über dem Signal-Snapshot — entscheidet, ob die Sektion im aktuellen Modus zählt |
+| `isEmpty(ctx)` | Leer ⇒ die Sektion fällt weg (nie ein leeres Blatt) |
+| `render(ctx)` | Liefert einen **render_ui-Descriptor** (Katalog B) |
+
+**Bausteine (live, Katalog B):** Sektionen rendern über drei render_ui-Komponenten, die im [Design-System](https://app.brainz.plus/app/design-system/) dokumentiert sind:
+
+| Komponente | Zweck |
+| --- | --- |
+| `AdaptiveSection` | Getitelter Rahmen (z. B. „JETZT", „Heute Abend"); Kinder = Inhalt |
+| `Shelf` | Horizontale, snap-scrollbare Karten-Schiene (z. B. „Filmabend") |
+| `DayTimeline` | Getypte Tagesagenda (Termine/Erinnerungen) |
+
+Weil eine Sektion über einen render_ui-Descriptor rendert, erbt sie automatisch Theming, Dark Mode und die geteilten Karten (z. B. `MediaCard`).
+
+<Note>
+Die render_ui-Bausteine und der Sektion-Vertrag sind **live**. Die App registriert heute die eingebauten Sektionen (Briefing · JETZT · Heute · Für dich · Filmabend). Das Beisteuern eigener Sektionen durch Dritt-Plugins über `contributes.homeSections[]` wird gerade verdrahtet — der Vertrag oben ist bereits die Zielform.
+</Note>
 
 ### Backend-Plugin-Typen
 
