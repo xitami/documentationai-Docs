@@ -201,8 +201,30 @@ registerCapability({
 
 Der Home-Composer mischt diese Beiträge gegated zu den Built-in-Sektionen (`top` davor, `bottom` danach). So erweitern Plugins das Home, ohne den Core anzufassen.
 
+**Data-only (deklaratives Manifest).** Ein Plugin **ohne Code** beschreibt eine Home-Sektion rein als Daten: ein **statischer render_ui-Descriptor** (`$pfad`-Strings werden gegen den Home-Snapshot aufgelöst, z. B. `"$composition.mode"`) plus ein `appliesWhen` über dem Snapshot:
+
+```json
+{
+  "contributes": {
+    "homeSections": [{
+      "id": "filmabend",
+      "title": "Filmabend",
+      "placement": "top",
+      "appliesWhen": { "hasField": "weekend" },
+      "render": {
+        "type": "AdaptiveSection",
+        "props": { "title": "Filmabend" },
+        "children": [{ "type": "BodyText", "props": { "text": "Wochenende — Zeit für einen Filmabend?" } }]
+      }
+    }]
+  }
+}
+```
+
+Der Host rendert nur **bekannte Komponenten** (die die Home-Engine kennt: `AdaptiveSection` · `Shelf` · `DayTimeline` · `BodyText` · `MediaCard` …) — kein Plugin-Code, keine Sandbox. Eine **Persona** ist genau ein Bündel solcher deklarativer Sektionen (Beispiel-Plugin „Persona: Filmfan").
+
 <Note>
-Status: render_ui-Bausteine, der Sektion-Vertrag UND die Beitrags-Verdrahtung (`collectHomeSections` → Composer) sind **live**. Eingebaute Sektionen (Briefing · JETZT · Heute · Für dich · Filmabend) registriert die App selbst; Dritt-Plugins docken über denselben `homeSections`-Vertrag an.
+Status: render_ui-Bausteine, der Sektion-Vertrag, die Code-Capability-Verdrahtung (`collectHomeSections` → Composer) UND der **deklarative, data-only Pfad** (`DeclarativePlugin.contributes.homeSections`, `isPluginEnabled`-gated) sind **live**. Offen: ein Sandbox-Thunk für Sektionen mit echter Laufzeit-Logik (P2+).
 </Note>
 
 ### Backend-Plugin-Typen
