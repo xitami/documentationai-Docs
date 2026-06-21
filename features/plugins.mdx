@@ -183,8 +183,26 @@ Das **Adaptive Home** ist ein Komponist: eine Context-Engine wählt aus Signalen
 
 Weil eine Sektion über einen render_ui-Descriptor rendert, erbt sie automatisch Theming, Dark Mode und die geteilten Karten (z. B. `MediaCard`).
 
+**Eigene Sektionen beisteuern.** Eine Capability liefert `homeSections[]` — jeder Beitrag bestimmt selbst, *wann* er erscheint (`appliesWhen` über dem Signal-Snapshot), ob er bei leerer Datenlage wegfällt (`isEmpty`), *was* er rendert (`render` → render_ui-Descriptor) und *wo* (`placement: "top" | "bottom"`, Default `bottom`):
+
+```ts
+registerCapability({
+  id: "weather",
+  homeSections: [{
+    id: "weather-strip",
+    title: "Wetter",
+    placement: "top",
+    appliesWhen: ({ snapshot }) => snapshot.signals.hasGeo,
+    isEmpty: () => false,
+    render: () => ({ type: "WeatherStrip", props: { /* … */ } }),
+  }],
+});
+```
+
+Der Home-Composer mischt diese Beiträge gegated zu den Built-in-Sektionen (`top` davor, `bottom` danach). So erweitern Plugins das Home, ohne den Core anzufassen.
+
 <Note>
-Die render_ui-Bausteine und der Sektion-Vertrag sind **live**. Die App registriert heute die eingebauten Sektionen (Briefing · JETZT · Heute · Für dich · Filmabend). Das Beisteuern eigener Sektionen durch Dritt-Plugins über `contributes.homeSections[]` wird gerade verdrahtet — der Vertrag oben ist bereits die Zielform.
+Status: render_ui-Bausteine, der Sektion-Vertrag UND die Beitrags-Verdrahtung (`collectHomeSections` → Composer) sind **live**. Eingebaute Sektionen (Briefing · JETZT · Heute · Für dich · Filmabend) registriert die App selbst; Dritt-Plugins docken über denselben `homeSections`-Vertrag an.
 </Note>
 
 ### Backend-Plugin-Typen
