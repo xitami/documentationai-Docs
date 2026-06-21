@@ -75,6 +75,20 @@ Im Stream erscheinen unterschiedliche Kartentypen, je nach auslösendem Ereignis
 
 Zwei Karten können sich auf dieselbe Entität beziehen und trotzdem getrennt im Stream erscheinen. Das ist kein Duplikatfehler, sondern Ausdruck verschiedener Ereignisse mit eigener zeitlicher Bedeutung.
 
+## Focus-Modus & flächenübergreifende Suche
+
+Die Omnibar sucht **live**: Während des Tippens filtert der lokale Volltextindex den Stream auf Treffer — relevante Karten bleiben mit Relevanz-Indikator, irrelevante schweben weg. Das ist der **Focus-Modus**. Er ist von der Eingabe-Absicht entkoppelt; die Suche läuft als ständiger Backdrop, das Ticket sagt nur, was die Eingabetaste auslöst.
+
+**Die Suche zielt auf die Fläche, die man gerade ansieht.** Der Stream ist der durchsuchbare Korpus; die übrigen Flächen verhalten sich dazu:
+
+| Aktive Fläche | Such-/Recall-Eingabe | Drop-/Ask-Eingabe |
+| --- | --- | --- |
+| Stream | filtert direkt im Stream (Focus-Modus) | wechselt nie die Fläche |
+| Home | wechselt weich in den gefilterten Stream-Focus | bleibt auf Home (Capture/Chat wächst aus der Omnibar) |
+| Entdecken | sucht im News-Korpus (in Vorbereitung) | bleibt auf Entdecken |
+
+Home ist eine Startfläche ohne eigenen Korpus. Erkennt die Omnibar eine Suche — Recall-Intent oder ein Such-Verb am Satzanfang wie „finde", „such", „zeig" — und gibt es Treffer, blendet Home nach einer kurzen Settle-Pause weich aus und zeigt den bereits gefilterten Stream. Wird die Omnibar wieder geleert, kehrt die Ansicht zur Ursprungsfläche zurück; die Suche wirkt wie eine temporäre Linse. Ein manueller Tab-Wechsel hebt diesen Rücksprung auf. Drop- und Ask-Eingaben wechseln nie die Fläche.
+
 ## Stream-Modus der Templates
 
 Im Stream-Modus geben Templates kein HTML als String zurück, sondern ein Objekt mit DOM-Element und Lifecycle-Hooks. Dadurch bleibt eine Karte über ihre Lebensdauer hinweg dieselbe Instanz und kann direkt im DOM weiterentwickelt werden.
