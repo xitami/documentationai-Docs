@@ -1,0 +1,36 @@
+---
+title: "Pack-Store & Registry"
+description: "Komponenten-Packs stöbern, live ausprobieren und installieren — eine Registry versorgt Mobile, Desktop, Editor und Chrome-Extension mit denselben, sha384-verifizierten Bausteinen."
+---
+
+## Idee
+
+render_ui-Komponenten kommen in **Packs** (brainz-cards, charts, forms, geo, tourdata …). Statt sie in jede Oberfläche einzubauen, veröffentlicht Brainz sie in eine zentrale **Pack-Registry** — und Nutzer entscheiden im **Store**, welche Packs ihre App können soll. Alle Oberflächen laden installierte Packs automatisch nach; offline bleibt die zuletzt geladene Kopie aktiv.
+
+## Der Store (Nutzer-Sicht)
+
+Erreichbar im Desktop-Frontend (`pack-store.html`) und als Sheet in der Mobile-App (Navigation → „Packs").
+
+- **Stöbern mit Live-Beispielen**: jede Komponente wird ECHT gerendert (dieselben Renderer wie in der App), nicht als Screenshot — auf ruhiger Fläche, im eigenen Theme (Dark/Light, Akzentfarbe und Eckigkeit des Nutzers wirken sofort).
+- **Chips je Pack** filtern den Katalog; ein Bottom-Sheet zeigt Details: Beschreibung, enthaltene Typen, Beispiele und den **Aktions-Vertrag** („⚡ Löst aus" — welche Actions die Renderer dispatchen können).
+- **Installieren = ein Toggle.** Die Auswahl liegt serverseitig (`GET/PUT /api/packs/installed`); Plugins können Packs zusätzlich beisteuern (`contributes.packs`) — die App lädt die effektive Vereinigung.
+
+## Die Registry (Entwickler-Sicht)
+
+`node scripts/packs-release.mjs` im AssistantKit generiert, prüft und veröffentlicht:
+
+1. **`gen-packs`** baut je Pack ein self-contained Artefakt: `renderer.mjs` (ES-Modul mit `pack = { name, version, engineApi, components, renderers, styles }`), `catalog.json` (Beschreibungen + Beispiele, LLM-lesbar), `styles.css`, `pack.json` (Typen, Actions, **sha384-Hashes**). Drei Gates laufen dabei mit — Token-Lint, Agent-Lesbarkeit, und nachgelagert axe + Aktions-Konformanz ([render_ui → Qualitäts-Gates](/features/render-ui#qualitäts-gates)).
+2. Publish nach R2; Auslieferung über `GET /api/public/packs/*` (newest-wins, `no-store`).
+3. Clients laden per Manifest und verifizieren jede Datei gegen den sha384 aus `pack.json`, bevor das Modul importiert wird.
+
+<Callout kind="info">
+
+**Composition-Packs** sind Packs ohne Code: eine `composition.json` mit Content-Type-Definitionen und Molekülen (gleicher Vertrag wie Plugin-`contributes.contentTypes`). Sie machen neue Inhaltstypen store-installierbar — auch dort, wo Remote-Code verboten ist (Chrome-Extension, MV3).
+
+</Callout>
+
+## Theming-Vererbung
+
+Der Store rendert Beispiele mit der Token-Kette der App: Nutzer-Achsen (Akzent, Radius, Dark/Light) → Content-Type-Farbe → Karten-Familien-Token ([render_ui → Token-Familien](/features/render-ui#token-familien--fabrik-garantien-cards-next)). Was du im Store siehst, ist exakt, was die Karte in deiner App wird.
+
+Verwandt: [Plugins](/features/plugins) — Plugins und Packs teilen Store-Fläche und Trust-Modell; ein Plugin kann Packs mitbringen, ein Pack bleibt rein deklarativ/renderend.

@@ -188,6 +188,16 @@ Inkrementell, jede Stufe einzeln deploybar:
 | T7 | Akzent/Theme-Achse (`--bz-accent`, `data-theme`) | Fertig |
 | T7b | RenderContext (`ctx.surface`) für strukturelle Pack-Varianten | Geplant |
 
+## Karten-Familien (`--<fam>-*`, cards-next)
+
+Zwischen Content-Type-Override und App-Skala liegt seit Juli 2026 eine Familien-Ebene für Karten: jede der 17 Familien (evt, tsk, med, … ai, gen) definiert auf `[data-fam]` ihre Token als Kette
+
+```css
+--tsk-accent: var(--tsk-accent-override, var(--tc, var(--bz-accent, #49AECB)));
+```
+
+Karten-CSS liest nur `--<fam>-*`/`--crd-*`; Nutzer-Achsen und `--tc` fließen automatisch ein. Nutzer/Plugins können gezielt EINE Familie färben (`--tsk-accent-override` via ThemeTokenContribution) — die Familie `ai` bleibt bewusst un-themebar (KI-Violett). Details: [render_ui → Token-Familien](/features/render-ui#token-familien--fabrik-garantien-cards-next).
+
 ## Invarianten
 
 <Callout kind="warning">

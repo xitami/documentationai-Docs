@@ -1,0 +1,97 @@
+---
+title: "render_ui — eine Karten-Engine, alle Oberflächen"
+description: "Ein Zod-Vertrag, eine Rendering-Engine, ein Karten-Pack — konsumiert von Mobile, Editor, PDF, Share-Seiten, MCP, Desktop und Chrome-Extension. Plus: wie die Bundles zu den Hosts kommen."
+---
+
+## Das Modell
+
+**Katalog B** (Anzeige) ist eine einzige Quelle der Wahrheit:
+
+- **`@assistant-kit/ui-contract`** — der Zod-Katalog aller Komponenten (`Markdown`, `KeyValue`, `MediaHero`, `RelatedList`, Karten, Charts …), Aktions-Schema, Validierung. Framework-frei.
+- **`@assistant-kit/widget`** — die `RenderingEngine`: Packs registrieren `type → Renderer`, unbekannte Typen degradieren zu einer Fallback-Karte (Forward-Kompatibilität).
+- **`@assistant-kit/pack-brainz-cards`** (+ charts/forms) — die Brainz-Karten inkl. Styles und `entityToCard`.
+
+Jede Oberfläche baut daraus denselben Stack: Katalog + Engine + Packs + Token-Block (`--bz-*`/`--as-*`, Dark über `.bz-dark`).
+
+## Die Surfaces
+
+| Surface | Host | Datenpfad |
+| --- | --- | --- |
+| Mobile live | `apps/mobile` (einkompiliert) | SSE `ui`-Events, `GET /api/entity-detail/:kind/:id(/modules)` |
+| Lexical-Editor | `render-ui-node` im Editor | Dokument-Deskriptoren |
+| PDF | `@assistant-kit/pdf-renderer` (pdfmake) | dieselben Deskriptoren |
+| Share-Seiten `/p/…` | Server-SSR (`brainz-render-html`, happy-dom) | statisches HTML, CSP-locked |
+| MCP `get_render_ui` | Server (vendored Snapshot/HTML) | JSON **oder** fertiges HTML |
+| **Desktop-Detail** | `feature.render-ui.js` + Vendor-Bundle | `/api/entity-detail/:kind/:id/modules` |
+| **Chrome-Extension** | Sidepanel nativ + Vendor-Bundle | dito (iframe `embed-preview.html` als Fallback) |
+
+## `@assistant-kit/brainz-detail-host`
+
+Der wiederverwendbare **Detail-Host** für Fremd-Oberflächen — extrahiert aus `embed-preview`, seit Juli 2026 die eine Quelle:
+
+```ts
+const host = createDetailHost({
+  root, baseUrl, token,
+  paletteCss: brainzPaletteCss,          // oder chromePanelPaletteCss
+  sections: { head: false, body: false } // Desktop: nur Module + Typ-Karte
+});
+await host.renderEntity("document", "5803", "Dune");
+```
+
+- **Sektions-Schalter** (`head/typeCard/body/keyValues/modules`) — Hosts mit eigener Detail-Darstellung rendern nur, was ihnen fehlt.
+- **Aktionen** laufen durch eine Allowlist (`navigate`, `openEntity`, `openUrl`); `openEntity` drillt in-place oder delegiert an den Host.
+- **`runDeclEffect`** — der geteilte Dispatcher für deklarative Plugin-Effekte (`setStatus`, `setContentStatus`, `createEntry`, `notify`, `openUrl`, `copy`), gleiche Endpoints wie der Mobile-Runtime.
+
+## Token-Familien & Fabrik-Garantien (cards-next)
+
+Seit Juli 2026 gehört jede Karte zu **einer von 17 Token-Familien** (`evt` Termine, `tsk` Aufgaben, `med` Medien, `cap` Captures, `fin` Finanzen, `ppl` Personen, `plc` Orte, `vlt` Vault, `ai` KI-Momente, `sug` Vorschläge, `pro` Prosa, `cont` Container, `mta` Metadaten, `ing` Zutaten, `wx` Wetter, `trn` Transit, `gen` Generic). Ein zentraler Fabrik-Wrapper stempelt `data-fam` auf jedes Karten-Root — darauf definieren CSS-Blöcke die Vererbungskette:
+
+```css
+--<fam>-accent: var(--<fam>-accent-override, var(--tc, var(--bz-accent, #49AECB)));
+```
+
+Karten-CSS liest **nur** die eigenen Familien-Token (`--evt-*`, `--crd-*` als Kartenbasis) — Theme, Content-Type-Farbe (`--tc`) und App-Tokens fließen über die Kette ein. Die Familie `ai` ist fest KI-Violett: weder Nutzer- noch Content-Type-überschreibbar (Zwei-Akzent-Regel).
+
+Mit der Familie bekommt jede Karte **Fabrik-Garantien** gratis:
+
+- **Fokus-Grundgesetz**: press-gebundene Karten sind EIN fokussierbares Element (`role="button"`/`article`, `tabindex="0"`, Enter/Space = Klick-Parität, Ring über `--crd-focus`).
+- **Gesten**: bindet der Host `pin`/`dismiss`, liefert die Fabrik den Swipe nach — inklusive Delete/Backspace als Tastatur-Äquivalent.
+- **Motion**: geteilte Primitive (`crd-rise`, `crd-enter` via `@starting-style`, `crd-breathe` …); der CSS-Spring (`--crd-spring-linear`) wird aus derselben Physik berechnet wie die Swipe-Geste — CSS und JS federn identisch. Alles hinter `prefers-reduced-motion`.
+- **View-Transition-Marker** `data-vt="card-<uuid>"` für den Karte→Detail-Morph (den Live-Namen setzt der Host im Morph-Moment).
+
+**Familien-Verben** (z. B. `tsk complete·snooze`, `sug accept·reject`, `vlt reveal·copy`) sind Event-Namen im Katalog: die Affordance erscheint nur, wenn der Host das Verb per `on.<verb>` an eine Action bindet — ungebunden bleibt sie unsichtbar, tote Enden sind strukturell ausgeschlossen. Die Action-Union selbst bleibt bewusst geschlossen.
+
+## Qualitäts-Gates
+
+Drei automatische Gates sichern jedes Pack-Release (Build/Test schlagen fehl):
+
+| Gate | Prüft |
+| --- | --- |
+| Token-Lint (`gen-packs`) | keine nackten Farb-Literale (Ratchet-Budget, nur Abbau), keine Fremd-Namespace-Reads |
+| axe-Gate | alle Store-Beispiele durch axe-core; neue critical/serious-Verstöße = rot (Baseline-Datei) |
+| Konformanz-Test | jedes deklarierte Event hat einen Dispatch-Pfad; selbst-dispatchte Action-Arten ≡ `emits` |
+
+## Auslieferung: on-demand vs. vendored
+
+| Consumer | Bezug | Aktualität |
+| --- | --- | --- |
+| Mobile | Buildzeit (Workspace) | mit jedem appshell-Deploy |
+| Desktop | `import('/vendor/brainz-detail-host.js')`, lazy | jedes Server-Deploy sofort (`no-cache`) |
+| Extension (nativ) | vendored Kopie **in** der Extension | Extension-Update — **MV3 verbietet Remote-Code** |
+| Extension (iframe) | `embed-preview.html` vom Server | immer der letzte Deploy |
+| Share/MCP | `server/vendor/*` (Node) | jedes Server-Deploy |
+| **Pack-Registry** (alle Hosts, on-demand) | `GET /api/public/packs/*` — sha384-verifizierte ES-Module | jeder `packs-release` sofort (newest-wins) |
+
+Details zur Registry und zum nutzerseitigen Stöbern & Installieren: [Pack-Store](/features/pack-store).
+
+<Callout kind="info">
+
+Der Sync ist ein Befehl: `pnpm --filter @assistant-kit/brainz-detail-host build && … sync:pb` vendort das self-contained Bundle (Engine + Packs + katex inlined, ~872 KB / gzip ~236 KB) nach `frontend/vendor/` und `chrome-extension/vendor/`.
+
+</Callout>
+
+<Callout kind="warn">
+
+Die App-Statik (`/modules/*`, `/shared/*`, `/vendor/*`, `index.html`) wird bewusst mit `Cache-Control: no-cache` ausgeliefert (ETag-Revalidierung) — vorher versteckte ein 24-h-Edge-Cache frische Deploys. Nur `/dist/*` (contenthash im Namen) cached lange.
+
+</Callout>

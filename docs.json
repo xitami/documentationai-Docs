@@ -1,0 +1,53 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Brainz",
+  "description": "Brainz — dein zweites Gehirn: erfassen, anreichern, wiederfinden. Feature-Dokumentation.",
+  "colors": {
+    "primary": "#2C8C9E",
+    "light": "#4FB3C6",
+    "dark": "#1F6B7A"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Start",
+        "pages": ["index"]
+      },
+      {
+        "group": "Erfassen & Wissen",
+        "pages": [
+          "features/drop",
+          "features/omnibar",
+          "features/enrichment",
+          "features/mediathek"
+        ]
+      },
+      {
+        "group": "Intelligenz",
+        "pages": [
+          "features/nexus",
+          "features/meetings",
+          "features/skills"
+        ]
+      },
+      {
+        "group": "Oberflächen",
+        "pages": [
+          "features/render-ui",
+          "features/desktop",
+          "features/chrome-extension"
+        ]
+      },
+      {
+        "group": "Erweitern",
+        "pages": ["features/plugins", "features/pack-store"]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "website": "https://app.brainz.plus"
+    }
+  }
+}
