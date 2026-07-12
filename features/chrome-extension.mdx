@@ -1,0 +1,37 @@
+---
+title: "Chrome-Extension (Brainz Clipper)"
+description: "Erfassen aus jedem Tab, Sidepanel mit nativen render_ui-Details und Plugin-Aktionen, Stash-Zwischenablage, Meeting-Capture — MV3-konform ohne Remote-Code."
+---
+
+## Überblick
+
+Der **Brainz Clipper** (MV3, `chrome-extension/`) bringt Brainz in den Browser:
+
+- **Erfassen:** Seite/Link/Bild/Auswahl per Kontextmenü oder `Alt+S` → `POST /api/drop`; Omnibox-Keyword `brainz` für die Suche.
+- **Sidepanel:** Feed/Vorschläge, Entitäts-Detail, Quick Actions, Timeline.
+- **Stash:** flüchtige Zwischenablage über Tabs hinweg (`Alt+C` / `Alt+V`).
+- **Meeting-Capture:** Overlay auf Meet/Teams/Zoom/Whereby/Jitsi.
+
+Verbindung und Login konfiguriert das Popup (Server-URL + Token in `chrome.storage.local`).
+
+## Detail-Rendering: nativ mit iframe-Fallback
+
+Das Sidepanel rendert Entitäts-Details seit Juli 2026 **nativ** über das vendorte `brainz-detail-host`-Bundle (`vendor/brainz-detail-host.js`) — dieselbe Engine und dieselben Karten wie Mobile/Desktop/Share-Seiten:
+
+1. **Nativer Pfad:** Host holt kanonische Row + Server-Module selbst (`/api/entity-detail/:kind/:id(/modules)`); `openEntity` navigiert im Panel, `openUrl` öffnet Tabs; das Theme folgt `prefers-color-scheme` live. Kein Token-Handoff per postMessage mehr.
+2. **Fallback:** die iframe auf `embed-preview.html` (server-gehostet, immer der letzte Deploy) — greift automatisch, falls das Bundle nicht lädt.
+
+<Callout kind="warn">
+
+**MV3 verbietet remote geladenen Code.** Deshalb ist das Render-Bundle in die Extension vendored (Update = Extension-Update), während die iframe-Variante als legale „always fresh"-Route bestehen bleibt. Deklarative **Plugins sind davon nicht betroffen** — sie sind Daten, kein Code, und kommen jederzeit frisch vom Server.
+
+</Callout>
+
+## Plugin-Aktionen
+
+Die Quick Actions im Detail kommen vom Server (`GET /api/assets/quick-actions/:type/:id`) — inklusive der Aktionen der **aktivierten deklarativen Plugins** (z. B. „Zur Leseliste"). Die Extension führt deren Effekte über den geteilten Dispatcher `runDeclEffect` aus dem Vendor-Bundle aus; aktiviert/deaktiviert wird in der Mobile-App oder im Desktop-Plugin-Store (gemeinsame Server-Aktivierung).
+
+## Verwandte Seiten
+
+- [render_ui-Architektur](/features/render-ui) — Engine, Bundles, Auslieferung
+- [Plugins](/features/plugins) — das konsolidierte deklarative System

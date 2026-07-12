@@ -1,0 +1,178 @@
+---
+title: "Meeting Companion"
+description: "Erkennt aktive Web-Meetings, erfasst Notizen, Screenshots und Action Items live und speichert sie als bearbeitbares Lexical-Dokument mit Tasks und Embeds."
+---
+
+## Überblick
+
+Der Meeting Companion verwandelt ein Web-Meeting in ein lebendiges Dokument. Die Chrome-Extension erkennt automatisch, wenn ein Meeting läuft (Google Meet, Microsoft Teams, Whereby, Zoom, Jitsi), und bietet eine schwebende Leiste zum Erfassen von Notizen, Screenshots, Entscheidungen und Action Items. Alles fließt in ein einziges, live bearbeitbares Brainz-Dokument.
+
+<Callout kind="info">
+
+Ein Meeting ist kein Spezialobjekt, sondern regulärer Inhalt: eine `content`-Zeile mit `kind = 'document'` und `content_type = 'meeting'`. Der bearbeitbare Text lebt als Lexical-Dokument in `content.data`, die Roh-Erfassungen in `structured_data.timeline[]`.
+
+</Callout>
+
+## Datenmodell
+
+Ein Meeting trennt zwei Ebenen sauber voneinander:
+
+| Ebene | Speicherort | Beschreibung |
+| --- | --- | --- |
+| **Bearbeitbares Dokument** | `content.data` | Eine Lexical-Hülle, die der `<brainz-editor>` öffnet und der Nutzer live bearbeitet. Wird **nie** serverseitig regeneriert — alle Mutationen laufen über den Editor. |
+| **Erfassungs-Puffer** | `structured_data.timeline[]` | Append-only Log der Captures aus Extension und Sidepanel. |
+
+Weitere Felder in `structured_data`:
+
+```json
+{
+  "platform": "google_meet",
+  "meeting_url": "https://meet.google.com/abc-defg-hij",
+  "started_at": "2026-06-09T13:00:00.000Z",
+  "participants": ["Anna", "Björn"],
+  "calendar_event_id": 8821,
+  "source": "extension/meeting-companion",
+  "timeline": [ /* Blöcke */ ],
+  "ended_at": "2026-06-09T13:48:00.000Z",
+  "duration_min": 48
+}
+```
+
+## Erfassungs-Workflow
+
+<Steps>
+<Step title="Meeting erkennen" icon="video">
+
+Ein Content-Script der Extension erkennt anhand der URL/Seite, dass ein Meeting läuft, und blendet die Capture-Leiste ein.
+
+</Step>
+
+<Step title="Dokument lazy anlegen" icon="file-plus">
+
+Erst bei der **ersten** Erfassung legt die Extension das Meeting-Dokument an (`POST /api/meetings`) — angereichert mit Kalenderdaten, falls verfügbar. Das vermeidet leere Meetings.
+
+</Step>
+
+<Step title="Blöcke erfassen" icon="list">
+
+Notizen, Entscheidungen und Action Items werden als Timeline-Blöcke angehängt (`POST /api/meetings/:id/blocks`). Screenshots laufen über `/api/drop` und werden als Datei-Embed in die Timeline aufgenommen.
+
+</Step>
+
+<Step title="Live bearbeiten" icon="edit">
+
+In der Web-App ist das Meeting ein normales Lexical-Dokument. Captures lassen sich aus der Timeline-Leiste an der Cursor-Position einfügen; der Nutzer schreibt frei weiter.
+
+</Step>
+
+<Step title="Abschließen" icon="check-circle">
+
+Beim Ende des Calls setzt die Extension `ended_at` und berechnet die Dauer (`POST /api/meetings/:id/finalize`).
+
+</Step>
+</Steps>
+
+## Block-Typen
+
+Die Timeline-Blöcke decken die Erfassungsarten ab. Jeder Block trägt einen Zeitstempel (`ts`).
+
+| Typ | Pflichtfeld | Verhalten |
+| --- | --- | --- |
+| `note` | `text` | Freitext-Notiz |
+| `decision` | `text` | Festgehaltene Entscheidung |
+| `action` | `text` | **Erzeugt einen echten Brainz-Task** (siehe unten) |
+| `embed` | `entityId` | Referenz auf eine Datei/Entität (z. B. Screenshot), als Embed gerendert |
+
+### Action Item → echter Task
+
+Ein `action`-Block ist mehr als Text: Brainz legt einen echten Task an (`content_type = 'task'`, verknüpft über `structured_data.meeting_id`) und schreibt einen Task-Embed in die Timeline. Im Dokument erscheint dadurch eine Task-Karte statt nur „Action: …" — die im Meeting beschlossene Aufgabe lebt sofort als nachverfolgbarer Task in Brainz.
+
+## Screenshots
+
+Screenshots werden **nicht** über die Meetings-API hochgeladen, sondern über den universellen [`/api/drop`](/api/drop)-Pfad (mit `emit_card=1`). Die zurückgegebene Datei wird anschließend als `embed`-Block in die Timeline aufgenommen. Beim Lesen reichert `GET /api/meetings/:id` die Embed-Blöcke mit der **Content-UUID** der Datei an, damit der Editor sie über `insertEmbed({ uuid, kind: 'file' })` an der Cursor-Position einsetzen kann.
+
+## API
+
+Alle Endpunkte erfordern Authentifizierung und laufen im RLS-Kontext des Nutzers.
+
+### POST /api/meetings
+
+Legt ein Meeting-Dokument an (lazy, bei der ersten Erfassung). Antwortet mit `{ id, uuid, title }` und speist eine Meeting-Karte in den Content Stream ein.
+
+<ParamField body="platform" param-type="string" required="false" show-location="false">
+`google_meet`, `teams`, `whereby`, `zoom` oder `jitsi`.
+</ParamField>
+
+<ParamField body="meeting_url" param-type="string" required="false" show-location="false">
+URL des Meetings.
+</ParamField>
+
+<ParamField body="title" param-type="string" required="false" show-location="false">
+Titel. Fehlt er, wird er aus Plattform und Datum (oder aus dem Kalender) abgeleitet.
+</ParamField>
+
+<ParamField body="started_at" param-type="string" required="false" show-location="false">
+ISO-Startzeitpunkt. Standard ist die aktuelle Zeit.
+</ParamField>
+
+<ParamField body="participants" param-type="array" required="false" show-location="false">
+Liste der Teilnehmernamen.
+</ParamField>
+
+<ParamField body="calendar_event_id" param-type="integer | string" required="false" show-location="false">
+ID des korrelierten Kalendertermins.
+</ParamField>
+
+### POST /api/meetings/&#123;id&#125;/blocks
+
+Hängt einen Block an die Timeline an (atomarer JSONB-Append, race-sicher bei schnellen Captures). `action`-Blöcke speisen zusätzlich eine Task-Karte in den Stream.
+
+<ParamField body="type" param-type="string" required="false" show-location="false">
+`note` (Standard), `decision`, `action` oder `embed`.
+</ParamField>
+
+<ParamField body="text" param-type="string" required="false" show-location="false">
+Erforderlich für `note`, `decision` und `action`.
+</ParamField>
+
+<ParamField body="entityType" param-type="string" required="false" show-location="false">
+Art der referenzierten Entität bei `embed` (z. B. `file`).
+</ParamField>
+
+<ParamField body="entityId" param-type="integer | string" required="false" show-location="false">
+Erforderlich für `embed`. ID der referenzierten Entität.
+</ParamField>
+
+<ParamField body="uuid" param-type="string" required="false" show-location="false">
+Datei-UUID, mit der der Editor das Embed an der Cursor-Position einfügt.
+</ParamField>
+
+### POST /api/meetings/&#123;id&#125;/finalize
+
+Setzt `ended_at` und berechnet `duration_min` aus `started_at`. Antwortet mit `{ ok, duration_min }`.
+
+<ParamField body="ended_at" param-type="string" required="false" show-location="false">
+ISO-Endzeitpunkt. Standard ist die aktuelle Zeit.
+</ParamField>
+
+### GET /api/meetings/&#123;id&#125;
+
+Live-Read für das Extension-Panel. Liefert die Meeting-Zeile inklusive Timeline und reichert Embed-Blöcke mit der Content-UUID der referenzierten Dateien an (Batch-Auflösung), ohne die gespeicherte Timeline zu verändern.
+
+## Kalender-Korrelation
+
+Der Meeting Companion baut keinen eigenen Kalender-Endpunkt, sondern nutzt `GET /api/calendar/context`. Bei der Erstellung holt die Extension den aktuellen Termin und übernimmt Titel, `calendar_event_id` und Teilnehmer — so ist das Meeting-Dokument von Anfang an mit dem Kalendereintrag verknüpft.
+
+## Stream-Integration
+
+Damit Meetings geräteübergreifend im [Content Stream](/features/content-stream) sichtbar sind, emittiert der Server gezielt Karten:
+
+- **Meeting** → eine `card.added`-Karte beim Anlegen
+- **Action Item** → eine Task-Karte pro erzeugtem Task
+- **Screenshot** → die Datei-Karte über `/api/drop` (`emit_card=1`)
+
+So erscheinen das Meeting selbst, jede beschlossene Aufgabe und jeder Screenshot ohne Doppelkarten im Stream.
+
+## Live-Bearbeitung in der Web-App
+
+In der Web-App öffnet sich ein Meeting als reguläres, kollaboratives Lexical-Dokument (siehe [Echtzeit-Kollaboration](/features/content#echtzeit-kollaboration)). Eine Timeline-Leiste zeigt die Captures; per Klick werden Text oder Embed an der aktuellen Cursor-Position eingefügt. Ein Kopfbereich fasst Plattform, Teilnehmer, Dauer und Kalenderbezug zusammen. Der `structured_data.timeline`-Puffer bleibt davon unberührt — er ist reiner Erfassungsspeicher, während das eigentliche Dokument ausschließlich über den Editor wächst.

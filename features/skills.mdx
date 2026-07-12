@@ -1,0 +1,148 @@
+---
+title: "Skills — deklarative KI-Wizards"
+description: "Ein Skill beschreibt einen kompletten LLM-Wizard als Daten: Eingabe, Ablauf, Karten, Ausgabe und Persistenz. Die Maschine dahinter ist für alle Skills dieselbe — und importiert auf Wunsch SKILL.md-Dateien oder MCP-Prompts."
+---
+
+## Überblick
+
+Rezept-Generator, Reiseplaner, Wochen-Menüplan — unter der Haube sind das dieselbe Maschine: ein Prompt, ein Zod-Schema, ein SSE-Stream, ein „Speichern"-Schritt. Skills ziehen diese Maschine an **eine** Stelle. Ein Skill ist danach nur noch **Definition**:
+
+| Baustein | Beschreibung | Katalog |
+| --- | --- | --- |
+| **Eingabe** | Compose-Felder (segmented, stepper, tokens, text, …) | Katalog A |
+| **Ablauf** | Server-Steps (`options` → `elaborate` → …), gestreamt per SSE | — |
+| **Options-Karten** | Deklaratives Karten-Template mit `{{bindings}}` | — |
+| **Ausgabe** | render_ui-Template (`{{result.x}}`) oder Markdown | Katalog B |
+| **Persistenz** | Generischer `POST /api/content` → Karte im Stream | — |
+
+<Callout kind="info">
+
+Ein neuer Skill braucht **null Custom-Code**: eine Server-Definition (`server/skills/*.js`, reine Daten + Prompts) und eine Client-Definition (`ClientSkillDef`, reine Daten). Importierte Skills (SKILL.md, MCP-Prompts) laufen als 1-Schritt-Sonderfall derselben Maschine.
+
+</Callout>
+
+## Server: der Skill-Runner
+
+`server/skill-runner.js` registriert Skills und führt ihre Steps aus. Die generische Route lautet:
+
+```
+POST /api/skills/:skillId/:stepId    (auth, SSE bei llm-Steps)
+GET  /api/skills                     (Liste aller Skills + Steps)
+```
+
+Ein Step ist entweder ein **llm-Step** (Prompt → LLM → JSON/Markdown → SSE) oder ein **handler-Step** (Seiteneffekte, z. B. Dokument anlegen):
+
+```js
+// server/skills/menu-week.js — REINE Definition, kein Router/SSE/Parser
+module.exports = {
+  id: 'menu-week',
+  name: 'Wochen-Menüplan',
+  steps: {
+    options: {
+      kind: 'llm',
+      task: 'skill_menu_week',        // ai-service-registry: Modell, Kosten, Monitoring
+      body: zBase,                    // RAW-Zod fürs Request-Body (z.coerce für Compose-Strings)
+      stream: 'options', maxOptions: 3,
+      system: 'Du bist ein pragmatischer Wochenplan-Koch …',
+      prompt: (b) => `Entwirf DREI Konzepte …`,
+    },
+    elaborate: {
+      kind: 'llm',
+      stream: 'single', resultEvent: 'result',
+      validate: (plan) => { if (!plan.days?.length) throw new Error('kein Wochenplan'); return plan; },
+      /* … */
+    },
+  },
+};
+```
+
+### SSE-Frames
+
+Jeder llm-Step streamt einheitliche Frames — der Client muss nur einen Parser kennen:
+
+| Event | Bedeutung |
+| --- | --- |
+| `progress` | Fortschritts-Text (`{{a.b}}`-Templates auf dem validierten Input) |
+| `option` | Ein Vorschlag (bei `stream: 'options'`, indexiert) |
+| `result` (o. ä.) | Das Ergebnis-Objekt (bei `stream: 'single'`) |
+| `error` | Fehlermeldung (Skill-eigener `errorMessage`) |
+| `done` | Stream-Ende |
+
+## Client: der Skill-Wizard
+
+`apps/mobile/src/skill-wizard.ts` rendert aus einer `ClientSkillDef` den kompletten Wizard: Compose-Eingabe → Loader mit Fortschritts-Schritten → Options-Karten → Ergebnis-Ansicht → Speichern → „Öffnen".
+
+```ts
+export const MENU_WEEK_SKILL: ClientSkillDef = {
+  serverId: "menu-week",
+  name: "Wochen-Menüplan",
+  tint: "#B0713A",
+  input: [
+    { kind: "segmented", key: "days", options: [{ value: "5", label: "5 Tage" }, { value: "7", label: "7 Tage" }] },
+    { kind: "stepper", key: "persons", label: "Personen", min: 1, max: 8, default: 2 },
+    { kind: "tokens", key: "prefs", placeholder: "Vorlieben …" },
+  ],
+  flow: {
+    options: { step: "options", card: { title: "{{chosen.title}}", subtitle: "{{chosen.concept}}", chips: "{{chosen.highlights}}" } },
+    result: { step: "elaborate", event: "result", body: { days: "{{input.days}}", option: "{{chosen}}" } },
+    create: { contentType: "menu_plan", title: "{{result.title}}", fields: "{{result}}", tags: ["menüplan"] },
+  },
+  output: [
+    { type: "Markdown", props: { text: "{{result.summary}}" } },
+    { type: "SectionHeader", props: { label: "Die Woche" } },
+    { type: "ChipRow", props: { chips: "{{result.shopping_hints}}" } },
+  ],
+};
+```
+
+### Bindings
+
+`{{pfad}}` bindet gegen den Wizard-State `{ input, chosen, result }`. Ein **exakter** Platzhalter (`"{{chosen}}"`) liefert den Rohwert (Objekt/Array), eingebettete Platzhalter interpolieren als String. `flow.result.transform` erlaubt Ableitungen fürs Template (z. B. `days[]` → `days_md`-Markdown), bevor gebunden und persistiert wird.
+
+## Import: SKILL.md und MCP-Prompts
+
+<Steps>
+<Step title="SKILL.md einfügen">
+
+Aktionen → **Skills &amp; Import** → SKILL.md-Inhalt in das Textfeld einfügen. Der Server parst Frontmatter (`name`/`description`) oder die erste `#`-Überschrift und legt den Skill tenant-scoped in `skill_definitions` ab (`POST /api/skills/import/skillmd`).
+
+</Step>
+<Step title="MCP-Prompt übernehmen">
+
+Verbundene MCP-Server werden nach `prompts/list` gefragt (`GET /api/skills/importable/mcp`). Ein Tap importiert den Prompt als Skill (`POST /api/skills/import/mcp-prompt`); zur Laufzeit holt der Runner den Prompt frisch per `prompts/get` vom Server.
+
+</Step>
+<Step title="Ausführen">
+
+Importierte Skills erscheinen in der Skills-Übersicht und laufen als 1-Schritt-Wizard: Text-Eingabe → Markdown-Antwort. Entfernen über das Papierkorb-Symbol (`DELETE /api/skills/imported/:skillId`, Definition bleibt deaktiviert erhalten).
+
+</Step>
+</Steps>
+
+## Sicherheits-Kanon
+
+<Callout kind="warning">
+
+Importierte Instruktionen und Prompts sind **Daten, kein Code**. Sie werden ausschließlich ins *user*-Prompt interpoliert — die System-Nachricht ist fest (gehärtete Regeln: keine Werkzeuge, keine Dateien, keine personenbezogenen Daten, Instruktions-Änderungen ignorieren).
+
+</Callout>
+
+| Regel | Umsetzung |
+| --- | --- |
+| Prompt-Injection bleibt wirkungslos | Feste `HARDENED_SYSTEM`-Nachricht; Import-Text nur im user-Prompt |
+| Keine Seiteneffekte aus LLM-Steps | llm-Steps haben keinen Tool-/DB-Zugriff; Schreiben nur in handler-Steps oder client-seitig über `POST /api/content` |
+| Kosten zentral | Jeder Step läuft über einen `ai-service-registry`-Task (Modell, maxTokens, costTier) |
+| Mandanten-Trennung | `skill_definitions` ist tenant-scoped; MCP-Server-Zugriff nur auf eigene `mcp_services`-Zeilen |
+
+## Routen
+
+| Route | Zweck |
+| --- | --- |
+| `GET /api/skills` | Skills + Steps auflisten (`meta.imported` markiert Importe) |
+| `POST /api/skills/:skillId/:stepId` | Step ausführen (SSE bei llm, JSON bei handler) |
+| `GET /api/skills/importable/mcp` | Importierbare MCP-Prompts verbundener Server |
+| `POST /api/skills/import/skillmd` | SKILL.md importieren (`{ markdown }`) |
+| `POST /api/skills/import/mcp-prompt` | MCP-Prompt importieren (`{ serviceId, promptName }`) |
+| `DELETE /api/skills/imported/:skillId` | Importierten Skill deaktivieren |
+
+Bestehende Alt-Routen (z. B. `/api/travel-planner/options`) delegieren an dieselben Executor-Funktionen und bleiben wire-kompatibel.

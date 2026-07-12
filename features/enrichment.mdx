@@ -1,0 +1,80 @@
+---
+title: "Content-Enrichment & Wissen"
+description: "Brainz baut ein tenant-übergreifendes Weltwissen auf: Zutaten, Techniken, Produktkategorien, Reiseziele, Pflanzen und Begriffe werden einmal generiert, kanonisiert gespeichert und überall in der App eingeblendet."
+---
+
+## Überblick
+
+Content-Enrichment ist die Wissens-Schicht unter den Inhalten. Wenn ein Rezept „Zucchini" erwähnt oder eine Notiz „Toskana", entsteht daraus ein **kanonischer Wissens-Eintrag** — generiert vom LLM, angereichert mit Bildern, Links und Fakten, und **global** gespeichert (nicht pro Mandant): Weltwissen ist für alle gleich.
+
+<Callout kind="info">
+
+Der Eintrag hängt nicht am Inhalt, sondern am **kanonischen Schlüssel** (`entity_type` + Slug). „Zucchini", „zucchini" und „Zucchinis" landen auf demselben Eintrag; „Reisenotizen Toskana" wird über Geocoding auf den Ort *Toskana* normalisiert.
+
+</Callout>
+
+## Entity-Typen
+
+Die Registry in `server/enrichment-api.js` definiert pro Typ Task, Prompt, Normalisierung und optionale Kanonisierung:
+
+| Typ | Beispiel | Besonderheit |
+| --- | --- | --- |
+| `ingredient` | Zucchini | Bild, Saison, Lagerung, Nährwerte — Grundlage der Küchen-Plugins |
+| `technique` | blanchieren | Schritt-für-Schritt-Wissen, verlinkt aus Rezept-Schritten |
+| `product_category` | Olivenöl | Kaufberatung, Qualitätsmerkmale |
+| `destination` | Toskana | **Geocode-Kanonisierung** (Open-Meteo): Name → `{lat, lng, admin1, country}` |
+| `plant` | Monstera | Pflege, Standort, Gießrhythmus |
+| `term` | Konfabulation | Begriffs-/Konzeptwissen |
+
+## Routen
+
+| Route | Zweck |
+| --- | --- |
+| `GET /api/enrichment/:entityType?names=a,b` | Einträge zu Namen holen (kanonisiert automatisch) |
+| `POST /api/enrichment/:entityType/batch` | Mehrere Namen anstoßen (Prefetch, fire-and-forget) |
+| `GET /api/enrichment/:entityType/:canonical` | Ein Eintrag per kanonischem Slug |
+
+Die Generierung läuft asynchron über die `ai-service-registry` (kostengünstige Modelle, Versionierung per `promptVersion`). Clients fragen optimistisch an und rendern, sobald der Eintrag existiert.
+
+## Wo das Wissen auftaucht
+
+<Steps>
+<Step title="Rezept-Detail">
+
+Zutaten-Chips bekommen automatisch Bild + Wissens-Link; erkannte **Techniken** im Schritt-Text verlinken auf ihr Technik-Wissen. Ein Tap öffnet das Wissens-Sheet mit „Deine Rezepte damit".
+
+</Step>
+<Step title="Orts-Detail">
+
+Orte zeigen Karte, **Wetter** (eigene Wetter-API) und **Webcams** in der Nähe; die Wissens-Section blendet Reiseziel-Wissen (beste Reisezeit, Highlights) ein — POIs mit Adresse werden übersprungen.
+
+</Step>
+<Step title="Reiseplaner">
+
+Beim Speichern einer Reise wird das Ziel geocodet, als **Knowledge Entity** (mit `location_lat/lng`) abgelegt, per `ke_context_links` mit dem Reise-Dokument verknüpft und das Reiseziel-Wissen vorgewärmt.
+
+</Step>
+<Step title="LLM-Erkennung">
+
+Der Knowledge-Enricher mappt erkannte Entities (`place` → `destination`, `food` → `ingredient`, `concept` → `term`, …) und stößt die Generierung automatisch an, wenn Inhalte analysiert werden.
+
+</Step>
+</Steps>
+
+## Medien- und Feld-Enrichment am Inhalt
+
+Neben dem globalen Weltwissen gibt es zwei Anreicherungen **direkt am Inhalt**:
+
+- **Medien-Enrichment** (automatisch nach dem Drop): TMDB/RAWG/OpenLibrary füllen `llm_context` (Poster, Jahr, Score, Genres) auf dem `document`-Zweig — sichtbar im Detail (merged Felder) und als Karten-Scalars im Stream. Nachziehen per `POST /api/drop/re-enrich-media`.
+- **Web-Recherche persistiert nur über `POST /api/content/:uuid/enrich-deep`** (Brave + LLM → `structured_data.fields`/`_extensions`, inkl. `key_facts`-Anzeige; das Detail lädt danach neu). Deep-Research-Linse und Chat-Websuche sind bewusst chat-only und schreiben nichts auf die Karte.
+
+## Verhältnis zu Knowledge Entities
+
+Zwei Ebenen, bewusst getrennt:
+
+| Ebene | Tabelle | Scope | Inhalt |
+| --- | --- | --- | --- |
+| **Knowledge Entities** | `knowledge_entities` + `ke_context_links` | pro Mandant | *Deine* Personen, Orte, Themen — verknüpft mit *deinen* Inhalten (Nexus-Signal `entity`) |
+| **Content-Enrichment** | `content_enrichment` | global | *Weltwissen* zum kanonischen Begriff — für alle Mandanten identisch |
+
+Ein Ort existiert typischerweise auf beiden Ebenen: als deine Knowledge Entity „Toskana" (mit Links zu deinen Reisenotizen) und als globaler `destination`-Eintrag (Reisezeit, Highlights). Die Geocode-Kanonisierung sorgt dafür, dass beide auf denselben Ort zeigen.

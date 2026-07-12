@@ -1,0 +1,50 @@
+---
+title: "Mediathek & Medien-Pipeline"
+description: "Filme, Serien, Bücher, Spiele, Podcasts: ein kind-Zweig (document), automatisches Enrichment, reiche Karten im Stream und Statusverwaltung — egal ob per Omnibar, Suche oder Teilen erfasst."
+---
+
+## Überblick
+
+Medien sind in Brainz **echte Inhalte mit Weltwissen**: Poster, Jahr, Bewertung, Genres, Status („will ich" → „dabei" → „fertig"). Die Mediathek (`GET /api/groups/mediathek`) gruppiert sie nach Status und Typ.
+
+## Ein Datenmodell: Medien sind `document`s
+
+Seit der Konsolidierung (Juli 2026) leben **alle** Medien auf dem `kind = 'document'`-Zweig der `content`-Tabelle:
+
+- **Beim Drop:** erkennt die Pipeline einen Medien-Typ (`movie`, `series`, `book`, `game`, `podcast`, `music`), wird das Item direkt promotet (`promoteMediaItemsToDocuments`) — inklusive `data`-Befüllung (Poster, Jahr, Rating, `media_status`) aus dem Enrichment.
+- **Bestand:** die einmalige Migration (`POST /api/drop/migrate-media-kind`, idempotent) hat 45 Alt-Items umgezogen und dabei alle polymorphen Referenzen synchron gehalten (assets, shares, collection-Mitgliedschaften, attachments, KE-Links).
+- **Alte Links funktionieren weiter:** `entity-detail` ist id-kanonisch — der kind in der URL ist nur ein Hinweis.
+
+<Callout kind="warn">
+
+Der `content_kind_payload`-Constraint verlangt für `document`s ein `data`-JSON. Die Promotion befüllt es deshalb immer (mindestens `media_status: "want"`).
+
+</Callout>
+
+## Automatisches Enrichment
+
+Nach dem Drop läuft das Medien-Enrichment asynchron auf dem `document`:
+
+- **Filme/Serien:** TMDB (Poster, Jahr, Score, Genres)
+- **Spiele:** RAWG (Cover, Rating)
+- **Bücher:** OpenLibrary (Cover, Rating)
+
+Titel werden vorher bereinigt (Präfixe wie „Film:", Klammer-Zusätze ohne Jahreszahl). Das Ergebnis landet in `llm_context`, wird über das `content.updated`-Event sofort in die Stream-Karte projiziert und ist im Detail sichtbar (merged aus `llm_context` + `data` + `structured_data.fields`).
+
+## Reiche Karten überall
+
+Die Stream-Events tragen **Karten-Scalars** (`preview_image`, `rating`, `media_status`, `subtitle` = Jahr · Genres) — die `MediaCard` rendert Cover, Status-Chip, ★-Bewertung und Typ-Pill:
+
+- im Mobile-Stream und der Mediathek,
+- im **Desktop-Detail** („Karten-Ansicht") und der **Chrome-Extension** (nativer render_ui-Host),
+- auf Share-Seiten (`/p/…`, SSR).
+
+## Status & Leseliste
+
+Der Lese-/Seh-Status wird **am Inhalt selbst** gesetzt (`POST /api/groups/mediathek/status`, `media_status`) — keine Kopien. Das deklarative Plugin **Leseliste** (`de.brainz.readlist`) nutzt genau diesen Weg: die Aktion „Zur Leseliste" auf Artikeln/Büchern setzt `want`, die System-Sammlung zeigt den Eintrag automatisch.
+
+## Verwandte Seiten
+
+- [Omnibar & Intent-Engine](/features/omnibar) — wie Titel beim Tippen erkannt werden
+- [Enrichment](/features/enrichment) — globales Weltwissen jenseits von Medien
+- [Plugins](/features/plugins) — Leseliste & deklarative Aktionen

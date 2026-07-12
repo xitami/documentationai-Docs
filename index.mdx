@@ -1,0 +1,50 @@
+---
+title: "Brainz — Überblick"
+description: "Ein Eingang für alles (Drop + Omnibar), automatisches Weltwissen, ein Karten-System für alle Oberflächen und ein deklaratives Plugin-System — die Feature-Dokumentation."
+---
+
+## Was ist Brainz?
+
+Brainz ist ein persönliches Wissens- und Alltagssystem: **alles in eine Zeile tippen oder teilen** — Brainz erkennt, was es ist (Notiz, Aufgabe, Film, Rezept, Link …), reichert es mit Weltwissen an und macht es überall wiederauffindbar: Mobile-App (PWA + Android), Desktop, Chrome-Extension, Share-Seiten und MCP.
+
+## Die Kernideen
+
+<CardGroup cols={2}>
+  <Card title="Universelle Erfassung" href="/features/drop">
+    `POST /api/drop` nimmt Text, URLs und Dateien — Typ-Erkennung, Artikel-Extraktion, Vision, Medien-Promotion.
+  </Card>
+  <Card title="Omnibar & Intent-Engine" href="/features/omnibar">
+    Lokale Klassifikation in Millisekunden, Direkt-Antworten (Feiertage, Geburtstage), Medien-Erkennung beim Tippen.
+  </Card>
+  <Card title="Enrichment & Wissen" href="/features/enrichment">
+    Globales Weltwissen (Zutaten, Orte, Techniken) + persönliche Knowledge Entities, sauber getrennt.
+  </Card>
+  <Card title="Mediathek" href="/features/mediathek">
+    Filme, Serien, Bücher, Spiele als angereicherte `document`s mit Status, Postern und reichen Karten.
+  </Card>
+  <Card title="render_ui" href="/features/render-ui">
+    Eine Zod-Quelle, eine Engine, ein Karten-Pack — konsumiert von sieben Surfaces.
+  </Card>
+  <Card title="Plugins" href="/features/plugins">
+    Deklarative Manifeste aus einer Quelle, Server-Aktivierung, Quick-Actions und Hooks für alle Hosts.
+  </Card>
+  <Card title="Nexus" href="/features/nexus">
+    Connection Intelligence: Zusammenhänge zwischen Inhalten, erkundbar als Fokus-und-Orbit-Pfad.
+  </Card>
+  <Card title="Skills" href="/features/skills">
+    Deklarative KI-Wizards — inklusive Import von SKILL.md und MCP-Prompts.
+  </Card>
+</CardGroup>
+
+## Oberflächen
+
+| Oberfläche | Kern | Doku |
+| --- | --- | --- |
+| **Mobile** (PWA + Android) | Stream, Omnibar, Detail-Cards, Capabilities | Feature-Seiten |
+| **Desktop** | Content-Hub, Kanban, Graph, Karten-Ansicht, Plugin-Store | [Desktop](/features/desktop) |
+| **Chrome-Extension** | Clipper, Sidepanel mit nativen Karten, Stash | [Extension](/features/chrome-extension) |
+| **Share/MCP** | SSR-Share-Seiten (`/p/…`), `get_render_ui` | [render_ui](/features/render-ui) |
+
+## Architektur in einem Absatz
+
+Alle Inhalte leben in **einer** `content`-Tabelle (`kind: item | document | file`; die alten Tabellennamen sind Kompatibilitäts-Views). Der Stream ist event-sourced (`entity.created`/`content.updated`), Karten entstehen aus Server-Projektionen. Anzeige-Komponenten sind ein Zod-Katalog (`ui-contract`), den jede Oberfläche mit derselben Rendering-Engine konsumiert — Plugins steuern Daten bei, keinen Code.

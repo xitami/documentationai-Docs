@@ -1,0 +1,30 @@
+---
+title: "Desktop-Frontend"
+description: "Die Power-Oberfläche am großen Bildschirm: Content-Hub mit Drill-Down-Detail, Kanban, Graph, Dashboards — seit Juli 2026 mit nativer render_ui-Karten-Ansicht, Plugin-Aktionen und deklarativem Plugin-Store."
+---
+
+## Überblick
+
+Das Desktop-Frontend (`frontend/`, ausgeliefert an `/`) ist eine modulare Vanilla-JS-App (`BrainzModules`-Registry, ~110 Feature-Module): Timeline, Content-Hub (Tabelle + Detail-Panel mit Drill-Down), Kanban, Neural-Graph, Kalender, Dashboards, Spotlight/Command-Palette (⌘K), Lexical-Editor.
+
+## render_ui im Detail-Panel
+
+Das Detail-Panel rendert seit Juli 2026 die **Server-Detail-Module** nativ — mit derselben Engine und denselben Karten wie die Mobile-App:
+
+- Sektion **„Karten-Ansicht"** (`feature.render-ui.js`): lädt lazy `/vendor/brainz-detail-host.js` und rendert `GET /api/entity-detail/:kind/:id/modules` (MediaHero, RelatedList, Plugin-Module) plus die Typ-Karte. Die Sektion erscheint nur, wenn der Server Module liefert; sie ist wie alle Sektionen einklapp- und umsortierbar.
+- `openEntity`-Aktionen aus Karten drillen über den vorhandenen Detail-Drilldown; das Theme folgt `data-theme`.
+
+## Plugin-Aktionen
+
+Sektion **„Plugin-Aktionen"** (`feature.plugin-actions.js`): zeigt die server-ausgewerteten Aktionen der aktivierten deklarativen Plugins (`GET /api/assets/quick-actions/:type/:id?categories=plugin`) und führt ihre Effekte über den geteilten Dispatcher `runDeclEffect` aus dem Vendor-Bundle aus.
+
+## Plugin-Store
+
+Command-Palette (⌘K) → **„Plugins"** öffnet den Store:
+
+- **Tab „Plugins" (Standard):** der deklarative Katalog (`/api/plugins/catalog`) mit per-User-Toggles (`/api/plugins/enabled`) — dieselbe Aktivierung wie in der Mobile-App; Toggles wirken sofort auf Quick-Actions **und** Hooks aller Hosts.
+- **Tabs „Code (Legacy)" / „Browse (Legacy)" / „Dev":** das alte imperative Bundle-System — dokumentiertes Legacy ohne reale Plugins (siehe [Plugins](/features/plugins)).
+
+## Auslieferung & Frische
+
+Alle unversionierten App-Dateien (`/modules/*`, `/shared/*`, `/vendor/*`, `index.html`) kommen mit `Cache-Control: private, no-cache`: der Browser revalidiert per ETag (billige 304s), CDN-Zwischenstufen cachen nicht — Deploys sind sofort sichtbar.

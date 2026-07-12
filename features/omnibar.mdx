@@ -1,0 +1,54 @@
+---
+title: "Omnibar & Intent-Engine"
+description: "Eine Eingabezeile für alles: lokale Intent-Klassifikation in Millisekunden, Direkt-Antworten aus eigenen Daten, Medien-Erkennung mit Mediathek-Vorrang und lernendes Tenant-Vokabular."
+---
+
+## Überblick
+
+Die Omnibar ist der Haupteingang der Mobile-App: Notizen, Aufgaben, Termine, Medien, Fragen — alles beginnt mit Tippen. Unter der Haube arbeitet eine **zweistufige Intent-Engine**:
+
+1. **Tier 0 (lokal, synchron):** eine isomorphe Engine (`shared/intent/index.js`, zur Laufzeit aus `brainz-shared/` geladen) klassifiziert jede Eingabe in Millisekunden — Content-Type-Vorhersage, Imperative („erinnere mich…"), Temporales, Wissens-Detektoren.
+2. **Server-Resolve (debounced, 420 ms):** reichert die lokale Vorhersage an — Duplikate, Medien-Kandidaten (`media_title_hint`), Vokabular.
+
+Das Ergebnis erscheint als **Ticket** über der Eingabe („Wird zur Notiz", „Film · 2021 · ★ 8.0") — mit pixelgenauer Markierung der erkannten Entität im Text.
+
+## Direkt-Antworten (ohne KI-Roundtrip)
+
+Für Wissensfragen, deren Daten lokal oder im Knowledge-Graph liegen, antwortet das Ticket **sofort selbst**:
+
+| Frage | Quelle | Beispiel-Antwort |
+| --- | --- | --- |
+| „wann ist pfingsten" | Feiertage lokal berechnet (`holidays-de`) | „Pfingsten: So., 24. Mai 2026 (in 321 Tagen)" |
+| „hat maike bald geburtstag" | KE-Offline-Pack (Personen) | „Maike wird am 3. August 34 (in 27 Tagen)" |
+| „nummer von trixi" | KE-Kontaktdaten | Kontakt-Preview mit Aktionen |
+
+<Callout kind="info">
+
+Der KE-Offline-Pack (`GET /api/knowledge-entities/offline-pack`, 5 min Cache) liefert zusätzlich **Live-Markierung**: bekannte Personen, Orte und Begriffe werden beim Tippen unterstrichen — wortgrenzen-genau, max. 4 Treffer, längster gewinnt.
+
+</Callout>
+
+## Medien-Erkennung
+
+Tippt man einen Film-/Serien-/Buch-/Spieltitel, entsteht direkt der richtige Medien-Eintrag:
+
+1. **Eigene Mediathek zuerst** (lokale FTS-Treffer, `mediaLocked`): „Resident Alien" trifft den vorhandenen Eintrag — kein Duplikat.
+2. **Trending-Pack** (`GET /api/media/trending-pack`, ≤400 Titel, 12 h Cache): aktuelle Titel matchen synchron beim Tippen.
+3. **Server-Resolve** (`/api/media/search`): Kandidat mit Jahr/Rating; ein Plausibilitäts-Guard (Titel-Präfix, artikel-bereinigt) verhindert Fehlgriffe.
+
+Kleinschreibung ist abgedeckt (Heuristik läuft auf einer Title-Case-Kopie), und der aufgelöste Typ wandert beim Absenden als `content_type` in den Drop — inklusive sofortiger Promotion auf den `document`-Zweig (siehe [Mediathek](/features/mediathek)).
+
+## Tenant-Vokabular (deklariert + gelernt)
+
+Die Engine kennt Typ-Wörter aus zwei Quellen, die beim Boot **additiv gemerged** werden:
+
+- **Deklariert:** jede Capability steuert ihr Vokabular bei („Zutat" → `ingredient`, „Route" → `transit`).
+- **Gelernt:** der tägliche Vocabulary-Learner destilliert aus echten Eingaben neue Verben/Typ-Wörter (Embedding-Zentroid + LLM-validiert), Client-Abruf über `POST /api/drop/vocab-pack` (Konfidenz ≥ 0.6).
+
+## Typ übersteuern
+
+Ein Tipp auf das Ticket öffnet den **Typ-Picker als Sheet** (gleiche Optik wie der Content-Type-Override im Detail): Typ pinnen oder wieder lösen — der Pin gewinnt gegen alle Automatiken.
+
+## Focus-Mode
+
+Bei aktiver Suche zeigt der Kopf lesbare Facetten-Pills (deutsche Typ-Labels, Zähler abgesetzt) statt technischer Provenienz; Server-Treffer unter Score 0.3 bleiben draußen (max. 12 ephemere Karten), Orts- und Inhalts-Treffer laufen in getrennten Lanes.
